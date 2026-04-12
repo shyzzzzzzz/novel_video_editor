@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(ls:*)",
+      "Bash(set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/)",
+      "Bash(export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/)",
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(npx vite:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npx esbuild:*)",
+      "Bash(curl -s http://localhost:1420)"
+    ]
+  }
+}

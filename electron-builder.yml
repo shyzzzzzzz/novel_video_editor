@@ -1,0 +1,40 @@
+appId: com.vibestudio.app
+productName: VibeStudio
+directories:
+  buildResources: build
+  output: release
+files:
+  - dist/**/*
+  - python/**/*
+  - !python/__pycache__/**
+  - !python/**/__pycache__/**
+extraResources:
+  - from: python
+    to: python
+    filter:
+      - "**/*"
+asar: true
+asarUnpack:
+  - python/**
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-win.${ext}
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  artifactName: ${productName}-${version}-mac.${ext}
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-linux.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
