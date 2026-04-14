@@ -1,0 +1,66 @@
+[     167ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:21608
+[   65509ms] [ERROR] Warning: React has detected a change in the order of Hooks called by %s. This will lead to bugs and errors if not fixed. For more information, read the Rules of Hooks: https://reactjs.org/link/rules-of-hooks
+
+   Previous render            Next render
+   ------------------------------------------------------
+%s   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+%s SettingsModal 1. useCallback                useCallback
+2. useCallback                useCallback
+3. useSyncExternalStore       useSyncExternalStore
+4. useDebugValue              useDebugValue
+5. useState                   useState
+6. useState                   useState
+7. useState                   useState
+8. useState                   useState
+9. useState                   useState
+10. useState                  useState
+11. useEffect                 useEffect
+12. useEffect                 useEffect
+13. undefined                 useState
+ 
+    at SettingsModal (http://localhost:1420/src/components/settings/SettingsModal.tsx?t=1776035484539:37:33)
+    at div
+    at MainShell (http://localhost:1420/src/components/layout/MainShell.tsx?t=1776035484539:31:40)
+    at App @ http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:520
+[   65511ms] Error: Rendered more hooks than during the previous render.
+    at updateWorkInProgressHook (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:11726:21)
+    at updateReducer (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:11775:22)
+    at updateState (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:12069:18)
+    at Object.useState (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:12801:24)
+    at useState (http://localhost:1420/node_modules/.vite/deps/chunk-CANBAPAS.js?v=a66f6a5e:1066:29)
+    at SettingsModal (http://localhost:1420/src/components/settings/SettingsModal.tsx?t=1776035484539:85:33)
+    at renderWithHooks (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:11596:26)
+    at updateFunctionComponent (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:14630:28)
+    at beginWork (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:15972:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:3680:22)
+[   65511ms] Error: Rendered more hooks than during the previous render.
+    at updateWorkInProgressHook (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:11726:21)
+    at updateReducer (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:11775:22)
+    at updateState (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:12069:18)
+    at Object.useState (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:12801:24)
+    at useState (http://localhost:1420/node_modules/.vite/deps/chunk-CANBAPAS.js?v=a66f6a5e:1066:29)
+    at SettingsModal (http://localhost:1420/src/components/settings/SettingsModal.tsx?t=1776035484539:85:33)
+    at renderWithHooks (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:11596:26)
+    at updateFunctionComponent (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:14630:28)
+    at beginWork (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:15972:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:3680:22)
+[   65513ms] [ERROR] The above error occurred in the <SettingsModal> component:
+
+    at SettingsModal (http://localhost:1420/src/components/settings/SettingsModal.tsx?t=1776035484539:37:33)
+    at div
+    at MainShell (http://localhost:1420/src/components/layout/MainShell.tsx?t=1776035484539:31:40)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries. @ http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:14079
+[   65512ms] Error: Rendered more hooks than during the previous render.
+    at updateWorkInProgressHook (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:11726:21)
+    at updateReducer (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:11775:22)
+    at updateState (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:12069:18)
+    at Object.useState (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:12801:24)
+    at useState (http://localhost:1420/node_modules/.vite/deps/chunk-CANBAPAS.js?v=a66f6a5e:1066:29)
+    at SettingsModal (http://localhost:1420/src/components/settings/SettingsModal.tsx?t=1776035484539:85:33)
+    at renderWithHooks (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:11596:26)
+    at updateFunctionComponent (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:14630:28)
+    at beginWork (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:15972:22)
+    at beginWork$1 (http://localhost:1420/node_modules/.vite/deps/chunk-OY5C42Z6.js?v=a66f6a5e:19806:22)
