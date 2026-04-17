@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { ProductionEpisode, ProductionScene, ProductionStatus } from '@/types';
 import { v4 as uuid } from 'uuid';
+import { loadPersistedData, createDebouncedSave } from '@/lib/persist-client';
 
 type KanbanView = 'episode' | 'scene';
 
@@ -16,6 +17,7 @@ interface ProductionState {
   setCurrentEpisode: (id: string | null) => void;
   getCurrentEpisode: () => ProductionEpisode | null;
   advanceEpisodeStatus: (id: string) => void;
+  revertEpisodeStatus: (id: string) => void;
 
   addScene: (episodeId: string, title: string, description?: string) => ProductionScene;
   updateScene: (sceneId: string, updates: Partial<ProductionScene>) => void;
@@ -24,6 +26,9 @@ interface ProductionState {
 
   getScenesForEpisode: (episodeId: string) => ProductionScene[];
   getEpisodeProgress: (episodeId: string) => { stage: ProductionStatus; completed: number; total: number };
+
+  // 持久化
+  load: () => Promise<void>;
 }
 
 export const useProductionStore = create<ProductionState>((set, get) => ({
@@ -77,7 +82,7 @@ export const useProductionStore = create<ProductionState>((set, get) => ({
       'outline',
       'scripting',
       'storyboard',
-      'takes',
+      'footage',
       'rough_cut',
       'final',
     ];
@@ -85,6 +90,26 @@ export const useProductionStore = create<ProductionState>((set, get) => ({
     if (currentIndex < statusOrder.length - 1) {
       const nextStatus = statusOrder[currentIndex + 1];
       get().updateEpisode(id, { status: nextStatus });
+    }
+  },
+
+  revertEpisodeStatus: (id) => {
+    const state = get();
+    const episode = state.episodes.find((e) => e.id === id);
+    if (!episode) return;
+
+    const statusOrder: ProductionStatus[] = [
+      'outline',
+      'scripting',
+      'storyboard',
+      'footage',
+      'rough_cut',
+      'final',
+    ];
+    const currentIndex = statusOrder.indexOf(episode.status);
+    if (currentIndex > 0) {
+      const prevStatus = statusOrder[currentIndex - 1];
+      get().updateEpisode(id, { status: prevStatus });
     }
   },
 
@@ -101,6 +126,7 @@ export const useProductionStore = create<ProductionState>((set, get) => ({
       shotIds: [],
       status: 'pending',
       characters: [],
+      characterRefs: [],
       order: episode.scenes.length,
     };
 
@@ -159,7 +185,7 @@ export const useProductionStore = create<ProductionState>((set, get) => ({
       'outline',
       'scripting',
       'storyboard',
-      'takes',
+      'footage',
       'rough_cut',
       'final',
     ];
@@ -170,4 +196,31 @@ export const useProductionStore = create<ProductionState>((set, get) => ({
       total: statusOrder.length,
     };
   },
+
+  load: async () => {
+    const data = await loadPersistedData<{
+      episodes: ProductionEpisode[];
+      currentEpisodeId: string | null;
+    }>('production');
+    if (data) {
+      // 数据迁移：旧的 'takes' 状态转为 'footage'
+      const migratedEpisodes = (data.episodes ?? []).map((e) => ({
+        ...e,
+        status: (e.status as string) === 'takes' ? 'footage' as ProductionStatus : e.status,
+      }));
+      set((state) => ({
+        episodes: migratedEpisodes.length > 0 ? migratedEpisodes : state.episodes,
+        currentEpisodeId: data.currentEpisodeId ?? state.currentEpisodeId,
+      }));
+    }
+  },
 }));
+
+// 自动保存
+const debouncedSaveProduction = createDebouncedSave<{ episodes: ProductionEpisode[]; currentEpisodeId: string | null }>('production');
+useProductionStore.subscribe((state) => {
+  debouncedSaveProduction({
+    episodes: state.episodes,
+    currentEpisodeId: state.currentEpisodeId,
+  });
+});

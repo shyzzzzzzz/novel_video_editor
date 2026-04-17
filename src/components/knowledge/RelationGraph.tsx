@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useKnowledgeStore } from '@/stores/knowledgeStore';
-import { Character } from '@/types';
+import { Character, getCharacterDefaultImage } from '@/types';
 
 const RELATION_COLORS: Record<string, string> = {
   ally: '#22c55e',
@@ -49,7 +49,7 @@ export function RelationGraph() {
   const edges: GraphEdge[] = useMemo(() => {
     const result: GraphEdge[] = [];
     for (const char of characters) {
-      for (const rel of char.relationships) {
+      for (const rel of (char.relationships || [])) {
         result.push({
           source: char.id,
           target: rel.targetId,
@@ -222,7 +222,7 @@ export function RelationGraph() {
                   y1={source.y}
                   x2={target.x}
                   y2={target.y}
-                  stroke={isHovered ? RELATION_COLORS[edge.type] : `${RELATION_COLORS[edge.type]}60`}
+                  stroke={isHovered ? (RELATION_COLORS[edge.type] ?? RELATION_COLORS.neutral) : `${RELATION_COLORS[edge.type] ?? RELATION_COLORS.neutral}60`}
                   strokeWidth={isHovered ? 2 : 1}
                   onMouseEnter={() => setHoveredEdge(edge)}
                   onMouseLeave={() => setHoveredEdge(null)}
@@ -236,7 +236,7 @@ export function RelationGraph() {
                     textAnchor="middle"
                     className="text-[10px] fill-neutral-400 pointer-events-none"
                   >
-                    {RELATION_LABELS[edge.type]}
+                    {RELATION_LABELS[edge.type] ?? '中立'}
                   </text>
                 )}
               </g>
@@ -247,7 +247,7 @@ export function RelationGraph() {
           {nodes.map((node) => {
             const isSelected = selectedNode === node.id;
             const char = node.character;
-            const totalRelations = char.relationships.length;
+            const totalRelations = char.relationships?.length ?? 0;
             return (
               <g
                 key={node.id}
@@ -267,14 +267,14 @@ export function RelationGraph() {
                   strokeWidth={isSelected ? 3 : 2}
                 />
                 {/* 头像占位 */}
-                {char.card?.image ? (
+                {getCharacterDefaultImage(char.card) ? (
                   <clipPath id={`clip-${node.id}`}>
                     <circle r={20} />
                   </clipPath>
                 ) : null}
-                {char.card?.image ? (
+                {getCharacterDefaultImage(char.card) ? (
                   <image
-                    href={char.card.image}
+                    href={getCharacterDefaultImage(char.card)!}
                     x={-20}
                     y={-20}
                     width={40}
@@ -351,8 +351,8 @@ export function RelationGraph() {
           <div className="p-4">
             <div className="flex items-start gap-3 mb-4">
               <div className="w-12 h-12 bg-neutral-800 rounded-full flex items-center justify-center text-xl text-neutral-400">
-                {selectedCharacter.card?.image ? (
-                  <img src={selectedCharacter.card.image} alt={selectedCharacter.name} className="w-full h-full rounded-full object-cover" />
+                {getCharacterDefaultImage(selectedCharacter.card) ? (
+                  <img src={getCharacterDefaultImage(selectedCharacter.card)!} alt={selectedCharacter.name} className="w-full h-full rounded-full object-cover" />
                 ) : (
                   selectedCharacter.name.slice(0, 1)
                 )}
@@ -360,7 +360,7 @@ export function RelationGraph() {
               <div>
                 <h4 className="text-white font-medium">{selectedCharacter.name}</h4>
                 <p className="text-xs text-neutral-500 mt-0.5">
-                  {selectedCharacter.relationships.length} 条关系
+                  {selectedCharacter.relationships?.length ?? 0} 条关系
                 </p>
               </div>
             </div>
@@ -379,7 +379,7 @@ export function RelationGraph() {
               </div>
             )}
 
-            {selectedCharacter.relationships.length > 0 && (
+            {(selectedCharacter.relationships?.length ?? 0) > 0 && (
               <div>
                 <p className="text-xs text-neutral-500 mb-2">关系列表</p>
                 <div className="space-y-2">
@@ -395,11 +395,11 @@ export function RelationGraph() {
                           <span
                             className="text-[10px] px-1.5 py-0.5 rounded"
                             style={{
-                              backgroundColor: `${RELATION_COLORS[rel.type]}20`,
-                              color: RELATION_COLORS[rel.type],
+                              backgroundColor: `${RELATION_COLORS[rel.type] ?? RELATION_COLORS.neutral}20`,
+                              color: RELATION_COLORS[rel.type] ?? RELATION_COLORS.neutral,
                             }}
                           >
-                            {RELATION_LABELS[rel.type]}
+                            {RELATION_LABELS[rel.type] ?? '中立'}
                           </span>
                         </div>
                         {rel.description && (

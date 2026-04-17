@@ -67,7 +67,7 @@ export function GlobalSearch() {
               className="p-3 bg-neutral-900 rounded hover:bg-neutral-800 cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-2">
-                <span>{typeIcons[result.type]}</span>
+                <span>{typeIcons[result.type] ?? '📄'}</span>
                 <span className="text-white font-medium">{result.title}</span>
                 <span className="text-xs text-neutral-500">{result.type}</span>
               </div>

@@ -157,7 +157,7 @@ function PlotLineCard({
     suspense: { label: '悬念', color: 'bg-red-900 text-red-300', icon: '❓' },
   };
 
-  const { label, color, icon } = typeConfig[plotLine.type];
+  const { label, color, icon } = typeConfig[plotLine.type] ?? typeConfig.suspense;
 
   return (
     <div className="bg-neutral-900 rounded-lg p-4">
@@ -177,7 +177,7 @@ function PlotLineCard({
             {plotLine.description && (
               <p className="text-xs text-neutral-400 mt-1">{plotLine.description}</p>
             )}
-            {plotLine.chapters.length > 0 && (
+            {(plotLine.chapters?.length ?? 0) > 0 && (
               <p className="text-xs text-neutral-600 mt-1">涉及 {plotLine.chapters.length} 章</p>
             )}
           </div>

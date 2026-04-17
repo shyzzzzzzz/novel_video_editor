@@ -67,7 +67,7 @@ function SceneCard({
   const statusConfig: Record<SceneStatus, { label: string; color: string }> = {
     pending: { label: '待处理', color: 'bg-neutral-700 text-neutral-400' },
     storyboarded: { label: '已分镜', color: 'bg-yellow-900 text-yellow-300' },
-    takes_generated: { label: 'Takes完成', color: 'bg-blue-900 text-blue-300' },
+    footage_uploaded: { label: '素材已上传', color: 'bg-blue-900 text-blue-300' },
     edited: { label: '已剪辑', color: 'bg-green-900 text-green-300' },
   };
 

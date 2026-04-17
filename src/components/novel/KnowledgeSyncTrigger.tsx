@@ -31,7 +31,8 @@ export function KnowledgeSyncTrigger() {
 
   if (!chapter) return null;
 
-  const canSync = chapter.status !== 'synced' && chapter.content.trim().length > 0;
+  // 始终允许同步，只要内容不为空
+  const canSync = chapter.content.trim().length > 0;
 
   return (
     <div className="p-4 bg-neutral-900 rounded-lg">
@@ -55,23 +56,19 @@ export function KnowledgeSyncTrigger() {
             : 'bg-blue-600 text-white hover:bg-blue-500'
         }`}
       >
-        {isSyncing
-          ? '同步中...'
-          : chapter.status === 'synced'
-          ? '已同步'
-          : '触发同步'}
+        {isSyncing ? '同步中...' : '触发同步'}
       </button>
 
       {showResult && lastSyncResult && (
         <div className="mt-3 p-3 bg-neutral-800 rounded text-xs">
           <p className="text-green-400 mb-1">✓ 同步完成</p>
-          {lastSyncResult.newCharacters.length > 0 && (
+          {(lastSyncResult.newCharacters?.length ?? 0) > 0 && (
             <p className="text-neutral-400">新增角色: {lastSyncResult.newCharacters.length}</p>
           )}
-          {lastSyncResult.newItems.length > 0 && (
+          {(lastSyncResult.newItems?.length ?? 0) > 0 && (
             <p className="text-neutral-400">新增物品: {lastSyncResult.newItems.length}</p>
           )}
-          {lastSyncResult.scenesExtracted.length > 0 && (
+          {(lastSyncResult.scenesExtracted?.length ?? 0) > 0 && (
             <p className="text-neutral-400">提取场景: {lastSyncResult.scenesExtracted.length}</p>
           )}
         </div>
@@ -79,9 +76,7 @@ export function KnowledgeSyncTrigger() {
 
       {!canSync && !isSyncing && (
         <p className="mt-2 text-xs text-neutral-600">
-          {chapter.content.trim().length === 0
-            ? '请先编写内容'
-            : '章节已同步'}
+          请先编写内容
         </p>
       )}
     </div>

@@ -38,7 +38,7 @@ export function TimelineClip({ clip, trackType, pixelsPerSecond }: TimelineClipP
       {/* 片段内容 */}
       <div className="h-full flex flex-col justify-between p-1 overflow-hidden">
         <div className="text-[10px] text-white truncate">
-          {clip.sourceType === 'take' ? '🎬 Take' : '🎵 Audio'}
+          {clip.sourceType === 'shot' ? '🎬 Shot' : '🎵 Audio'}
         </div>
 
         {/* 转场标记 */}

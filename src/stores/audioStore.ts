@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { AudioTrack, AudioType } from '@/types';
 import { v4 as uuid } from 'uuid';
+import { loadPersistedData, createDebouncedSave } from '@/lib/persist-client';
 
 interface AudioState {
   tracks: AudioTrack[];
@@ -14,6 +15,9 @@ interface AudioState {
 
   getTracksByEpisode: (episodeId: string) => AudioTrack[];
   getTrackById: (trackId: string) => AudioTrack | undefined;
+
+  // 持久化
+  load: () => Promise<void>;
 }
 
 export const useAudioStore = create<AudioState>((set, get) => ({
@@ -59,4 +63,21 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     get().tracks.filter((t) => t.episodeId === episodeId),
 
   getTrackById: (trackId) => get().tracks.find((t) => t.id === trackId),
+
+  load: async () => {
+    const data = await loadPersistedData<{
+      tracks: AudioTrack[];
+    }>('audio_tracks');
+    if (data) {
+      set((state) => ({ tracks: data.tracks ?? state.tracks }));
+    }
+  },
 }));
+
+// 自动保存
+const debouncedSaveAudio = createDebouncedSave<{ tracks: AudioTrack[] }>('audio_tracks');
+useAudioStore.subscribe((state) => {
+  debouncedSaveAudio({
+    tracks: state.tracks,
+  });
+});

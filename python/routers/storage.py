@@ -103,3 +103,40 @@ async def upload_file(path: str, file: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=403, detail="Permission denied")
     except Exception:
         raise HTTPException(status_code=500, detail="Storage operation failed")
+
+
+class WriteTextRequest(BaseModel):
+    content: str
+
+
+@router.get("/read")
+async def read_text(path: str) -> dict:
+    """Read text file content."""
+    try:
+        p = safe_path(path)
+        if not p.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        with open(p, "r", encoding="utf-8") as f:
+            content = f.read()
+        return {"status": "ok", "content": content}
+    except HTTPException:
+        raise
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File is not valid text")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Read operation failed")
+
+
+@router.post("/write")
+async def write_text(path: str, req: WriteTextRequest) -> dict:
+    """Write text content to file."""
+    try:
+        p = safe_path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(req.content)
+        return {"status": "ok", "path": str(p)}
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Write operation failed")

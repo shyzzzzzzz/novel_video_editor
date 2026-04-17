@@ -1,11 +1,40 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNovelStore } from '@/stores/novelStore';
+import { savePersistedData } from '@/lib/persist-client';
 import { Chapter } from '@/types';
 
 export function NovelEditor() {
-  const { getCurrentChapter, updateChapter } = useNovelStore();
+  const { getCurrentChapter, updateChapter, currentNovel } = useNovelStore();
   const chapter = getCurrentChapter();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 手动保存函数
+  const handleSave = useCallback(() => {
+    if (!currentNovel) return;
+    setSaveStatus('saving');
+    savePersistedData('novels', {
+      currentNovel,
+      currentChapterId: useNovelStore.getState().currentChapterId,
+      storyNodes: useNovelStore.getState().storyNodes,
+    }).then(() => {
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    });
+  }, [currentNovel]);
+
+  // Ctrl+S 保存
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSave]);
 
   useEffect(() => {
     if (!chapter) return;
@@ -15,6 +44,29 @@ export function NovelEditor() {
     return () => clearTimeout(timer);
   }, [chapter?.content, chapter?.id]);
 
+  // 自动保存状态跟踪
+  useEffect(() => {
+    if (chapter?.content) {
+      setSaveStatus('saving');
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        if (currentNovel) {
+          savePersistedData('novels', {
+            currentNovel,
+            currentChapterId: useNovelStore.getState().currentChapterId,
+            storyNodes: useNovelStore.getState().storyNodes,
+          }).then(() => {
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 2000);
+          });
+        }
+      }, 1000);
+    }
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [chapter?.content, currentNovel]);
+
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     if (!chapter) return;
     updateChapter(chapter.id, { content: e.target.value });
@@ -23,6 +75,12 @@ export function NovelEditor() {
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!chapter) return;
     updateChapter(chapter.id, { title: e.target.value });
+  };
+
+  const saveStatusText = {
+    idle: '',
+    saving: '保存中...',
+    saved: '✓ 已保存',
   };
 
   if (!chapter) {
@@ -49,6 +107,11 @@ export function NovelEditor() {
         <span className="text-sm text-neutral-500">
           {chapter.metadata.wordCount} 字
         </span>
+        {saveStatusText[saveStatus] && (
+          <span className={`text-sm ${saveStatus === 'saved' ? 'text-green-400' : 'text-neutral-500'}`}>
+            {saveStatusText[saveStatus]}
+          </span>
+        )}
         <StatusBadge status={chapter.status} />
       </div>
 

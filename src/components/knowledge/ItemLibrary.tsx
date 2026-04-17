@@ -141,7 +141,7 @@ function ItemCard({
               <p className="text-sm text-neutral-300">{item.description}</p>
             </div>
           )}
-          {item.flow.length > 0 && (
+          {(item.flow?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs text-neutral-500 mb-1">流转历史</p>
               <div className="space-y-1">

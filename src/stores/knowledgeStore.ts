@@ -12,6 +12,7 @@ import {
   EmotionTag,
 } from '@/types';
 import { v4 as uuid } from 'uuid';
+import { loadPersistedData, createDebouncedSave } from '@/lib/persist-client';
 
 interface KnowledgeState {
   characters: Character[];
@@ -53,6 +54,9 @@ interface KnowledgeState {
   performSearch: (query: string, chapters?: { id: string; title: string; content: string }[]) => void;
   clearSearch: () => void;
 
+  // 持久化
+  load: () => Promise<void>;
+
   getCharacterById: (id: string) => Character | undefined;
   getItemById: (id: string) => Item | undefined;
   getLocationById: (id: string) => Location | undefined;
@@ -74,8 +78,9 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
     const newCharacter: Character = {
       ...character,
       id: uuid(),
-      appearances: [],
-      versions: [],
+      appearances: character.appearances || [],
+      versions: character.versions || [],
+      relationships: character.relationships || [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -370,4 +375,35 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   getPlotLineById: (id) => get().plotLines.find((p) => p.id === id),
   getPlotLinesByType: (type) => get().plotLines.filter((p) => p.type === type),
   getUnresolvedPlotLines: () => get().plotLines.filter((p) => p.status === 'active'),
+
+  load: async () => {
+    const data = await loadPersistedData<{
+      characters: Character[];
+      items: Item[];
+      locations: Location[];
+      plotLines: PlotLine[];
+      snapshots: KnowledgeSnapshot[];
+    }>('knowledge');
+    if (data) {
+      set((state) => ({
+        characters: data.characters ?? state.characters,
+        items: data.items ?? state.items,
+        locations: data.locations ?? state.locations,
+        plotLines: data.plotLines ?? state.plotLines,
+        snapshots: data.snapshots ?? state.snapshots,
+      }));
+    }
+  },
 }));
+
+// 自动保存
+const debouncedSaveKnowledge = createDebouncedSave<{ characters: Character[]; items: Item[]; locations: Location[]; plotLines: PlotLine[]; snapshots: KnowledgeSnapshot[] }>('knowledge');
+useKnowledgeStore.subscribe((state) => {
+  debouncedSaveKnowledge({
+    characters: state.characters,
+    items: state.items,
+    locations: state.locations,
+    plotLines: state.plotLines,
+    snapshots: state.snapshots,
+  });
+});

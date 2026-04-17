@@ -46,11 +46,11 @@ async function main() {
   const spawnOpts = {
     cwd: pythonDir,
     shell: true,
-    stdio: 'pipe' as const,
+    stdio: 'pipe',
   };
   // On Windows: suppress console window
   if (process.platform === 'win32') {
-    (spawnOpts as any).creationFlags = 0x08000000; // CREATE_NO_WINDOW
+    spawnOpts.creationFlags = 0x08000000; // CREATE_NO_WINDOW
   }
   const server = spawn(python, ['-m', 'uvicorn', 'main:app', '--reload', '--port', '18080', '--host', '127.0.0.1'], spawnOpts);
 

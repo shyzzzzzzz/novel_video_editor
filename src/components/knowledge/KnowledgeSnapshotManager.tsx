@@ -60,10 +60,10 @@ export function KnowledgeSnapshotManager() {
                 </div>
               </div>
               <div className="flex gap-4 text-xs text-neutral-500">
-                <span>角色: {snapshot.characters.length}</span>
-                <span>物品: {snapshot.items.length}</span>
-                <span>地点: {snapshot.locations.length}</span>
-                <span>情节: {snapshot.plotLines.length}</span>
+                <span>角色: {snapshot.characters?.length ?? 0}</span>
+                <span>物品: {snapshot.items?.length ?? 0}</span>
+                <span>地点: {snapshot.locations?.length ?? 0}</span>
+                <span>情节: {snapshot.plotLines?.length ?? 0}</span>
               </div>
             </div>
           ))}

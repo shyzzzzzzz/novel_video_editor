@@ -1,7 +1,8 @@
 import { useRef, useEffect } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
 import { useTimelineStore } from '@/stores/timelineStore';
-import { useTakesStore } from '@/stores/takesStore';
+import { useStoryboardStore } from '@/stores/storyboardStore';
+import { resolveVideoUrl } from '@/lib/api-client';
 
 export function VideoPreview() {
   const { currentTime, isPlaying, setCurrentTime, togglePlaying, playbackRate } = useEditorStore();
@@ -15,14 +16,17 @@ export function VideoPreview() {
       if (track.type !== 'video') continue;
       for (const clip of track.clips) {
         if (currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration) {
-          if (clip.sourceType === 'take') {
-            const takes = useTakesStore.getState().takes;
-            const take = takes.find((t) => t.id === clip.sourceId);
-            if (take?.videoUrl) {
-              return { url: take.videoUrl, isImage: false };
+          if (clip.sourceType === 'shot') {
+            const storyboard = useStoryboardStore.getState().currentStoryboard;
+            const shot = storyboard?.shots.find((s) => s.id === clip.sourceId);
+            if (shot?.videoUrl) {
+              return { url: resolveVideoUrl(shot.videoUrl), isImage: false };
             }
-            if (take?.imageUrl) {
-              return { url: take.imageUrl, isImage: true };
+            if (shot?.thumbnailUrl) {
+              return { url: resolveVideoUrl(shot.thumbnailUrl), isImage: true };
+            }
+            if (shot?.imageUrl) {
+              return { url: shot.imageUrl, isImage: true };
             }
           }
         }

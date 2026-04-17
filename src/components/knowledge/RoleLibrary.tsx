@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useKnowledgeStore } from '@/stores/knowledgeStore';
-import { Character } from '@/types';
+import { Character, getCharacterDefaultImage } from '@/types';
+import { generateText } from '@/lib/api-client';
+import { getSkillSysprompt } from '@/stores/settingsStore';
 
 export function RoleLibrary() {
   const { characters, addCharacter, deleteCharacter } = useKnowledgeStore();
@@ -88,7 +90,7 @@ function AddCharacterForm({
             if (!name.trim()) return;
             onAdd({
               name,
-              card: { description, keyExpressions: [] },
+              card: { images: [], defaultImageIndex: 0, description, keyExpressions: [] },
               personality,
               background: '',
               arc: { chapters: {} },
@@ -115,6 +117,78 @@ function CharacterCard({
   onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [localDescription, setLocalDescription] = useState(character.card?.description || '');
+  const [generatingText, setGeneratingText] = useState(false);
+  const [userInstruction, setUserInstruction] = useState('');
+  const { updateCharacter } = useKnowledgeStore();
+
+  // 处理图片上传
+  const handleUploadImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      if (!dataUrl) return;
+
+      const currentCard = character.card!;
+      const newImages = [...(currentCard.images || []), dataUrl];
+      updateCharacter(character.id, {
+        card: {
+          images: newImages,
+          defaultImageIndex: currentCard.defaultImageIndex ?? 0,
+          description: currentCard.description,
+          keyExpressions: currentCard.keyExpressions || [],
+        },
+      });
+    };
+    reader.readAsDataURL(file);
+
+    // 清空 input，允许重复选择同一文件
+    e.target.value = '';
+  };
+
+  const handleSaveDescription = () => {
+    const currentCard = character.card!;
+    updateCharacter(character.id, {
+      card: {
+        images: currentCard.images || [],
+        defaultImageIndex: currentCard.defaultImageIndex ?? 0,
+        description: localDescription,
+        keyExpressions: currentCard.keyExpressions || [],
+      },
+    });
+  };
+
+  const handleGenerateDesc = async () => {
+    if (!userInstruction.trim()) return;
+    setGeneratingText(true);
+    try {
+      const sysprompt = getSkillSysprompt('text', 'image_desc') || '请根据以下角色信息生成英文生图描述。';
+
+      // 用户的输入直接作为 user prompt
+      const fullPrompt = userInstruction.trim();
+
+      // sysprompt 直接作为 prompt（用户设的就是完整的角色三视图指令）
+      const desc = await generateText(fullPrompt, { system: sysprompt });
+      setLocalDescription(desc);
+      // 自动保存
+      const currentCard = character.card!;
+      updateCharacter(character.id, {
+        card: {
+          images: currentCard.images || [],
+          defaultImageIndex: currentCard.defaultImageIndex ?? 0,
+          description: desc,
+          keyExpressions: currentCard.keyExpressions || [],
+        },
+      });
+    } catch (err) {
+      console.error('生成描述失败:', err);
+    } finally {
+      setGeneratingText(false);
+    }
+  };
 
   const relationshipLabels = {
     ally: { label: '同盟', color: 'bg-green-900 text-green-300' },
@@ -124,8 +198,36 @@ function CharacterCard({
     neutral: { label: '中立', color: 'bg-neutral-700 text-neutral-300' },
   };
 
+  // 拖拽角色图开始
+  const handleImageDragStart = (e: React.DragEvent, imageUrl: string) => {
+    e.dataTransfer.setData('character-image', JSON.stringify({
+      characterId: character.id,
+      characterName: character.name,
+      imageUrl,
+    }));
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  // 拖拽整个角色卡（使用默认图）
+  const handleCardDragStart = (e: React.DragEvent) => {
+    const defaultImg = getCharacterDefaultImage(character.card);
+    if (defaultImg) {
+      // 如果拖的是角色卡上的图片，不让事件冒泡到卡片的拖拽
+      e.dataTransfer.setData('character-image', JSON.stringify({
+        characterId: character.id,
+        characterName: character.name,
+        imageUrl: defaultImg,
+      }));
+      e.dataTransfer.effectAllowed = 'copy';
+    }
+  };
+
   return (
-    <div className="bg-neutral-900 rounded-lg overflow-hidden">
+    <div
+      className="bg-neutral-900 rounded-lg overflow-hidden"
+      draggable={!!getCharacterDefaultImage(character.card)}
+      onDragStart={handleCardDragStart}
+    >
       <div className="p-4">
         <div className="flex items-start justify-between">
           <div>
@@ -148,10 +250,10 @@ function CharacterCard({
           </div>
         </div>
 
-        {character.relationships.length > 0 && (
+        {(character.relationships?.length ?? 0) > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {character.relationships.map((rel) => {
-              const { label, color } = relationshipLabels[rel.type];
+              const { label, color } = relationshipLabels[rel.type] ?? relationshipLabels.neutral;
               return (
                 <span key={rel.targetId} className={`px-1.5 py-0.5 text-[10px] rounded ${color}`}>
                   {label}
@@ -164,19 +266,109 @@ function CharacterCard({
 
       {expanded && (
         <div className="px-4 pb-4 border-t border-neutral-800 pt-3 space-y-3">
-          {character.card.description && (
-            <div>
-              <p className="text-xs text-neutral-500 mb-1">形象描述</p>
-              <p className="text-sm text-neutral-300">{character.card.description}</p>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs text-neutral-500">形象描述</p>
+              <button
+                onClick={handleGenerateDesc}
+                disabled={generatingText}
+                className="px-2 py-0.5 text-xs bg-blue-700 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+              >
+                {generatingText ? '生成中...' : '生成描述'}
+              </button>
             </div>
-          )}
+            <input
+              type="text"
+              value={userInstruction}
+              onChange={(e) => setUserInstruction(e.target.value)}
+              placeholder="输入生图描述内容，如：一位身穿古装的年轻女子，剑眉星目，英姿飒爽..."
+              className="w-full px-3 py-1.5 bg-neutral-950 border border-neutral-700 rounded text-white placeholder-neutral-600 text-xs mb-2 focus:outline-none focus:border-neutral-500"
+            />
+            <textarea
+              value={localDescription}
+              onChange={(e) => setLocalDescription(e.target.value)}
+              onBlur={handleSaveDescription}
+              placeholder="手动输入，或点击上方「生成描述」让 AI 根据角色信息生成..."
+              rows={3}
+              className="w-full px-3 py-2 bg-neutral-950 border border-neutral-700 rounded text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none text-sm"
+            />
+          </div>
+
+          {/* 多图展示 */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs text-neutral-500">角色图（{character.card.images?.length || 0}张）</p>
+              <label className="px-2 py-0.5 text-xs bg-green-700 text-white rounded hover:bg-green-600 cursor-pointer">
+                + 上传
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleUploadImage}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            {character.card.images && character.card.images.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2">
+                {character.card.images.map((img, idx) => (
+                  <div
+                    key={idx}
+                    className={`relative group cursor-grab active:cursor-grabbing ${idx === character.card.defaultImageIndex ? 'ring-2 ring-blue-500' : ''}`}
+                    draggable
+                    onDragStart={(e) => handleImageDragStart(e, img)}
+                  >
+                    <img
+                      src={img}
+                      alt={`${character.name} ${idx + 1}`}
+                      className="w-full h-20 object-cover rounded bg-neutral-800"
+                    />
+                    {idx === character.card.defaultImageIndex && (
+                      <span className="absolute top-1 left-1 bg-blue-600 text-white text-[10px] px-1 rounded">默认</span>
+                    )}
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newCard = { ...character.card, defaultImageIndex: idx };
+                          updateCharacter(character.id, { card: newCard });
+                        }}
+                        className="px-1.5 py-0.5 text-[10px] bg-blue-600 text-white rounded hover:bg-blue-500"
+                        title="设为默认"
+                      >
+                        默认
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newImages = character.card.images.filter((_, i) => i !== idx);
+                          const newDefaultIndex = idx <= character.card.defaultImageIndex
+                            ? Math.max(0, character.card.defaultImageIndex - 1)
+                            : character.card.defaultImageIndex;
+                          updateCharacter(character.id, {
+                            card: { ...character.card, images: newImages, defaultImageIndex: newDefaultIndex },
+                          });
+                        }}
+                        className="px-1.5 py-0.5 text-[10px] bg-red-600 text-white rounded hover:bg-red-500"
+                        title="删除"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-600 text-center py-4">暂无图片，点击上传</p>
+            )}
+          </div>
+
           {character.background && (
             <div>
               <p className="text-xs text-neutral-500 mb-1">背景</p>
               <p className="text-sm text-neutral-300">{character.background}</p>
             </div>
           )}
-          {character.appearances.length > 0 && (
+          {(character.appearances?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs text-neutral-500 mb-1">出场章节</p>
               <div className="flex flex-wrap gap-1">
@@ -188,12 +380,17 @@ function CharacterCard({
               </div>
             </div>
           )}
-          {character.versions.length > 0 && (
+          {(character.versions?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs text-neutral-500 mb-1">版本快照</p>
               <p className="text-sm text-neutral-400">{character.versions.length} 个快照</p>
             </div>
           )}
+
+          {/* 拖拽提示 */}
+          <div className="text-center">
+            <p className="text-[10px] text-neutral-600">拖拽角色图到分镜镜头可直接添加角色参考</p>
+          </div>
         </div>
       )}
     </div>

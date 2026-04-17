@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Workspace, Episode } from '@/types';
 import { v4 as uuid } from 'uuid';
+import { loadPersistedData, createDebouncedSave } from '@/lib/persist-client';
 
 interface WorkspaceState {
   workspace: Workspace | null;
@@ -30,6 +31,9 @@ interface WorkspaceState {
   createEpisode: (seasonId: string, name: string) => string;
   setCurrentEpisode: (id: string | null) => void;
   updateEpisodeStatus: (id: string, status: Episode['status']) => void;
+
+  // 持久化
+  load: () => Promise<void>;
 
   // 工具
   getCurrentEpisode: () => Episode | null;
@@ -217,4 +221,42 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
     return null;
   },
+
+  load: async () => {
+    const data = await loadPersistedData<{
+      workspace: Workspace | null;
+      currentProjectId: string | null;
+      currentSeriesId: string | null;
+      currentSeasonId: string | null;
+      currentEpisodeId: string | null;
+    }>('workspaces');
+    if (data) {
+      set((state) => ({
+        workspace: data.workspace ?? state.workspace,
+        currentProjectId: data.currentProjectId ?? state.currentProjectId,
+        currentSeriesId: data.currentSeriesId ?? state.currentSeriesId,
+        currentSeasonId: data.currentSeasonId ?? state.currentSeasonId,
+        currentEpisodeId: data.currentEpisodeId ?? state.currentEpisodeId,
+      }));
+    }
+  },
 }));
+
+// 自动保存：每次 workspaceStore 变化后防抖保存
+type WorkspacePersistState = {
+  workspace: Workspace | null;
+  currentProjectId: string | null;
+  currentSeriesId: string | null;
+  currentSeasonId: string | null;
+  currentEpisodeId: string | null;
+};
+const debouncedSaveWorkspace = createDebouncedSave<WorkspacePersistState>('workspaces');
+useWorkspaceStore.subscribe((state) => {
+  debouncedSaveWorkspace({
+    workspace: state.workspace,
+    currentProjectId: state.currentProjectId,
+    currentSeriesId: state.currentSeriesId,
+    currentSeasonId: state.currentSeasonId,
+    currentEpisodeId: state.currentEpisodeId,
+  });
+});

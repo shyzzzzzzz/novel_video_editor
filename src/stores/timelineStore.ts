@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { TimelineTrack, TimelineClip, Transition, ClipEffect } from '@/types';
 import { v4 as uuid } from 'uuid';
+import { loadPersistedData, createDebouncedSave } from '@/lib/persist-client';
 
 interface TimelineState {
   tracks: TimelineTrack[];
@@ -25,6 +26,9 @@ interface TimelineState {
   getTrackById: (trackId: string) => TimelineTrack | undefined;
   getClipsAtTime: (time: number) => TimelineClip[];
   getTimelineDuration: () => number;
+
+  // 持久化
+  load: () => Promise<void>;
 }
 
 export const useTimelineStore = create<TimelineState>((set, get) => ({
@@ -253,4 +257,26 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       0
     );
   },
+
+  load: async () => {
+    const data = await loadPersistedData<{
+      tracks: TimelineTrack[];
+      duration: number;
+    }>('timeline');
+    if (data) {
+      set((state) => ({
+        tracks: data.tracks ?? state.tracks,
+        duration: data.duration ?? state.duration,
+      }));
+    }
+  },
 }));
+
+// 自动保存
+const debouncedSaveTimeline = createDebouncedSave<{ tracks: TimelineTrack[]; duration: number }>('timeline');
+useTimelineStore.subscribe((state) => {
+  debouncedSaveTimeline({
+    tracks: state.tracks,
+    duration: state.duration,
+  });
+});

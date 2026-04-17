@@ -37,7 +37,6 @@ export interface Episode {
   status: EpisodeStatus;
   scripts: Script[];
   storyboards: Storyboard[];
-  takes: Take[];
   audioTracks: AudioTrack[];
   createdAt: string;
   updatedAt: string;
@@ -126,6 +125,12 @@ export interface Storyboard {
   updatedAt: string;
 }
 
+export interface ShotCharacterRef {
+  characterId: string;       // 指向 Character
+  imageUrl: string;          // 该镜头中此角色使用的具体图片
+  position?: 'left' | 'center' | 'right' | 'background';
+}
+
 export interface Shot {
   id: string;
   sequence: number;
@@ -133,27 +138,17 @@ export interface Shot {
   cameraAngle: CameraAngle;
   duration: number; // 秒
   imageUrl?: string;
-  takeIds: string[];
+  // 视频管理
+  videoUrl?: string;          // 服务器相对路径（如 videos/xxx/shot_1.mp4）
+  videoFileName?: string;     // 原始上传文件名
+  thumbnailUrl?: string;      // 提取的缩略图服务器路径
+  // 帧连续性
+  firstFrameUrl?: string;     // 首帧参考图（可手动设置或从上一镜头尾帧填充）
+  lastFrameUrl?: string;      // 尾帧参考图（上传视频后提取填充）
+  characterRefs?: ShotCharacterRef[];  // 该镜头涉及的角色及图片
 }
 
 export type CameraAngle = 'wide' | 'medium' | 'close_up' | 'over_shoulder' | 'pov' | 'bird_eye' | 'low_angle';
-
-// ==================== Takes ====================
-
-export interface Take {
-  id: string;
-  shotId: string;
-  version: number;
-  videoUrl?: string;
-  imageUrl?: string;
-  prompt: string;
-  seed?: number;
-  parameters: Record<string, unknown>;
-  status: TakeStatus;
-  createdAt: string;
-}
-
-export type TakeStatus = 'pending' | 'generating' | 'completed' | 'failed';
 
 // ==================== 音频 ====================
 
@@ -286,9 +281,22 @@ export interface Character {
 }
 
 export interface CharacterCard {
-  image?: string;
+  images: string[];           // 支持多张图片
+  defaultImageIndex: number;   // 默认使用哪张
   description: string;
   keyExpressions: string[];
+}
+
+/**
+ * 获取 CharacterCard 的默认图片
+ * 兼容旧数据格式（image: string）的辅助函数
+ */
+export function getCharacterDefaultImage(card: CharacterCard): string | undefined {
+  if (card.images && card.images.length > 0) {
+    const idx = card.defaultImageIndex ?? 0;
+    return card.images[idx] ?? card.images[0];
+  }
+  return undefined;
 }
 
 export interface Relationship {
@@ -418,7 +426,7 @@ export interface TimelineClip {
   effects: ClipEffect[];
   volume?: number;
   speed?: number;
-  sourceType?: 'take' | 'audio';
+  sourceType?: 'shot' | 'audio';
   sourceId?: string;
 }
 
@@ -438,13 +446,6 @@ export interface ClipEffect {
 
 export type EffectType = 'brightness' | 'contrast' | 'saturation' | 'speed' | 'reverse';
 
-// ==================== Takes ====================
-
-export interface TakeFilter {
-  status?: TakeStatus;
-  shotId?: string;
-}
-
 // ==================== 剧集制作 ====================
 
 export interface ProductionEpisode {
@@ -453,13 +454,19 @@ export interface ProductionEpisode {
   novelChapterIds: string[];
   status: ProductionStatus;
   scenes: ProductionScene[];
-  currentScriptId?: string;
-  currentStoryboardId?: string;
+  outline?: string;      // LLM 生成的大纲
+  script?: string;        // LLM 生成的剧本
+  storyboard?: string;    // LLM 生成分镜（可能是JSON字符串或原文）
   createdAt: string;
   updatedAt: string;
 }
 
-export type ProductionStatus = 'outline' | 'scripting' | 'storyboard' | 'takes' | 'rough_cut' | 'final';
+export type ProductionStatus = 'outline' | 'scripting' | 'storyboard' | 'footage' | 'rough_cut' | 'final';
+
+export interface SceneCharacterRef {
+  characterId: string;
+  defaultImageUrl?: string;   // 默认图片
+}
 
 export interface ProductionScene {
   id: string;
@@ -471,11 +478,12 @@ export interface ProductionScene {
   status: SceneStatus;
   emotion?: string;
   location?: string;
-  characters: string[];
+  characters: string[];       // 旧字段，保留兼容
+  characterRefs: SceneCharacterRef[];  // 新增：角色关联
   order: number;
 }
 
-export type SceneStatus = 'pending' | 'storyboarded' | 'takes_generated' | 'edited';
+export type SceneStatus = 'pending' | 'storyboarded' | 'footage_uploaded' | 'edited';
 
 // ==================== 审阅 ====================
 

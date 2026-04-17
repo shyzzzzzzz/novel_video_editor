@@ -122,7 +122,7 @@ function LocationCard({
     other: { label: '其他', color: 'bg-neutral-700 text-neutral-300' },
   };
 
-  const { label, color } = typeLabels[location.type];
+  const { label, color } = typeLabels[location.type] ?? typeLabels.other;
 
   return (
     <div className="bg-neutral-900 rounded-lg p-4">

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { DraftVersion, Annotation } from '@/types';
 import { v4 as uuid } from 'uuid';
+import { loadPersistedData, createDebouncedSave } from '@/lib/persist-client';
 
 interface ReviewState {
   draftVersions: DraftVersion[];
@@ -16,6 +17,9 @@ interface ReviewState {
   deleteAnnotation: (annotationId: string) => void;
   getAnnotationsForEpisode: (episodeId: string) => Annotation[];
   getAnnotationsForTarget: (targetId: string) => Annotation[];
+
+  // 持久化
+  load: () => Promise<void>;
 }
 
 export const useReviewStore = create<ReviewState>((set, get) => ({
@@ -81,4 +85,26 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
   getAnnotationsForTarget: (targetId) =>
     get().annotations.filter((a) => a.targetId === targetId),
+
+  load: async () => {
+    const data = await loadPersistedData<{
+      draftVersions: DraftVersion[];
+      annotations: Annotation[];
+    }>('reviews');
+    if (data) {
+      set((state) => ({
+        draftVersions: data.draftVersions ?? state.draftVersions,
+        annotations: data.annotations ?? state.annotations,
+      }));
+    }
+  },
 }));
+
+// 自动保存
+const debouncedSaveReviews = createDebouncedSave<{ draftVersions: DraftVersion[]; annotations: Annotation[] }>('reviews');
+useReviewStore.subscribe((state) => {
+  debouncedSaveReviews({
+    draftVersions: state.draftVersions,
+    annotations: state.annotations,
+  });
+});
