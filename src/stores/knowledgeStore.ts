@@ -10,6 +10,10 @@ import {
   Relationship,
   ItemFlow,
   EmotionTag,
+  ChapterPlotSummary,
+  CharacterFate,
+  ArcNode,
+  ForeshadowNode,
 } from '@/types';
 import { v4 as uuid } from 'uuid';
 import { loadPersistedData, createDebouncedSave } from '@/lib/persist-client';
@@ -20,6 +24,7 @@ interface KnowledgeState {
   locations: Location[];
   plotLines: PlotLine[];
   snapshots: KnowledgeSnapshot[];
+  chapterPlotSummaries: ChapterPlotSummary[];
   searchQuery: string;
   searchResults: SearchResult[];
 
@@ -63,6 +68,20 @@ interface KnowledgeState {
   getPlotLineById: (id: string) => PlotLine | undefined;
   getPlotLinesByType: (type: PlotLineType) => PlotLine[];
   getUnresolvedPlotLines: () => PlotLine[];
+
+  // 角色命运板
+  updateCharacterFate: (characterId: string, fate: Partial<CharacterFate>) => void;
+  addArcNode: (characterId: string, node: Omit<ArcNode, 'id'>) => void;
+
+  // 伏笔追踪
+  addForeshadow: (plotLineId: string, foreshadow: Omit<ForeshadowNode, 'id'>) => void;
+  resolveForeshadow: (plotLineId: string, chapterId: string, content: string) => void;
+  updatePlotLineHealth: (plotLineId: string, health: number) => void;
+
+  // 章节剧情摘要
+  createChapterPlotSummary: (summary: Omit<ChapterPlotSummary, 'id' | 'createdAt' | 'updatedAt'>) => ChapterPlotSummary;
+  updateChapterPlotSummary: (chapterId: string, updates: Partial<ChapterPlotSummary>) => void;
+  getChapterPlotSummary: (chapterId: string) => ChapterPlotSummary | undefined;
 }
 
 export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
@@ -71,6 +90,7 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   locations: [],
   plotLines: [],
   snapshots: [],
+  chapterPlotSummaries: [],
   searchQuery: '',
   searchResults: [],
 
@@ -376,6 +396,89 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
   getPlotLinesByType: (type) => get().plotLines.filter((p) => p.type === type),
   getUnresolvedPlotLines: () => get().plotLines.filter((p) => p.status === 'active'),
 
+  // 角色命运板
+  updateCharacterFate: (characterId, fate) =>
+    set((state) => ({
+      characters: state.characters.map((c) =>
+        c.id === characterId
+          ? { ...c, fate: { ...c.fate, ...fate } as CharacterFate, updatedAt: new Date().toISOString() }
+          : c
+      ),
+    })),
+
+  addArcNode: (characterId, node) =>
+    set((state) => ({
+      characters: state.characters.map((c) => {
+        if (c.id !== characterId) return c;
+        const arc = c.fate?.arc || [];
+        const existingFate = c.fate || { characterId: c.id, status: 'active' as const, arc: [] as ArcNode[] };
+        return {
+          ...c,
+          fate: {
+            ...existingFate,
+            arc: [...arc, { ...node, id: uuid() } as ArcNode],
+          },
+          updatedAt: new Date().toISOString(),
+        } as Character;
+      }),
+    })),
+
+  // 伏笔追踪
+  addForeshadow: (plotLineId, foreshadow) =>
+    set((state) => ({
+      plotLines: state.plotLines.map((p) => {
+        if (p.id !== plotLineId) return p;
+        const newForeshadow: ForeshadowNode = { ...foreshadow, id: uuid() };
+        return {
+          ...p,
+          foreshadowNodes: [...(p.foreshadowNodes || []), newForeshadow],
+          updatedAt: new Date().toISOString(),
+        };
+      }),
+    })),
+
+  resolveForeshadow: (plotLineId, chapterId, content) =>
+    set((state) => ({
+      plotLines: state.plotLines.map((p) => {
+        if (p.id !== plotLineId) return p;
+        return {
+          ...p,
+          status: 'resolved' as const,
+          resolution: { chapterId, chapterTitle: '', content },
+          updatedAt: new Date().toISOString(),
+        } as PlotLine;
+      }),
+    })),
+
+  updatePlotLineHealth: (plotLineId, health) =>
+    set((state) => ({
+      plotLines: state.plotLines.map((p) =>
+        p.id === plotLineId ? { ...p, health: Math.max(0, Math.min(100, health)), updatedAt: new Date().toISOString() } : p
+      ),
+    })),
+
+  // 章节剧情摘要
+  createChapterPlotSummary: (summary) => {
+    const newSummary: ChapterPlotSummary = {
+      ...summary,
+      id: uuid(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    set((state) => ({ chapterPlotSummaries: [...state.chapterPlotSummaries, newSummary] }));
+    return newSummary;
+  },
+
+  updateChapterPlotSummary: (chapterId, updates) =>
+    set((state) => ({
+      chapterPlotSummaries: state.chapterPlotSummaries.map((s) =>
+        s.chapterId === chapterId ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s
+      ),
+    })),
+
+  getChapterPlotSummary: (chapterId) =>
+    get().chapterPlotSummaries.find((s) => s.chapterId === chapterId),
+
   load: async () => {
     const data = await loadPersistedData<{
       characters: Character[];
@@ -383,6 +486,7 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
       locations: Location[];
       plotLines: PlotLine[];
       snapshots: KnowledgeSnapshot[];
+      chapterPlotSummaries: ChapterPlotSummary[];
     }>('knowledge');
     if (data) {
       set((state) => ({
@@ -391,13 +495,14 @@ export const useKnowledgeStore = create<KnowledgeState>((set, get) => ({
         locations: data.locations ?? state.locations,
         plotLines: data.plotLines ?? state.plotLines,
         snapshots: data.snapshots ?? state.snapshots,
+        chapterPlotSummaries: data.chapterPlotSummaries ?? state.chapterPlotSummaries,
       }));
     }
   },
 }));
 
 // 自动保存
-const debouncedSaveKnowledge = createDebouncedSave<{ characters: Character[]; items: Item[]; locations: Location[]; plotLines: PlotLine[]; snapshots: KnowledgeSnapshot[] }>('knowledge');
+const debouncedSaveKnowledge = createDebouncedSave<{ characters: Character[]; items: Item[]; locations: Location[]; plotLines: PlotLine[]; snapshots: KnowledgeSnapshot[]; chapterPlotSummaries: ChapterPlotSummary[] }>('knowledge');
 useKnowledgeStore.subscribe((state) => {
   debouncedSaveKnowledge({
     characters: state.characters,
@@ -405,5 +510,6 @@ useKnowledgeStore.subscribe((state) => {
     locations: state.locations,
     plotLines: state.plotLines,
     snapshots: state.snapshots,
+    chapterPlotSummaries: state.chapterPlotSummaries,
   });
 });

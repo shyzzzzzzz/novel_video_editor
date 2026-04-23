@@ -25,7 +25,7 @@ interface NovelState {
   // 章节操作
   createChapter: (title: string, content?: string) => Chapter;
   loadChapter: (chapterId: string) => void;
-  updateChapter: (chapterId: string, updates: Partial<Pick<Chapter, 'title' | 'content' | 'status'>>) => void;
+  updateChapter: (chapterId: string, updates: Partial<Pick<Chapter, 'title' | 'content' | 'status' | 'metadata'>>) => void;
   deleteChapter: (chapterId: string) => void;
   reorderChapter: (chapterId: string, newOrder: number) => void;
 

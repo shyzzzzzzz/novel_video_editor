@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useStoryboardStore } from '@/stores/storyboardStore';
-import { useKnowledgeStore } from '@/stores/knowledgeStore';
-import { useProductionStore } from '@/stores/productionStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { CameraAngle, ShotCharacterRef, getCharacterDefaultImage, Shot, Character } from '@/types';
 import { resolveVideoUrl } from '@/lib/api-client';
 
@@ -15,10 +14,22 @@ const framingMap: Record<string, CameraAngle> = {
   '低角': 'low_angle', 'low_angle': 'low_angle',
 };
 
+const cameraAngleLabels: Record<CameraAngle, string> = {
+  wide: '广角',
+  medium: '中景',
+  close_up: '特写',
+  over_shoulder: '过肩',
+  pov: 'POV',
+  bird_eye: '鸟瞰',
+  low_angle: '低角',
+};
+
 export function StoryboardView({ episodeId }: { episodeId: string }) {
   const { currentStoryboard, addShot, deleteShot, clearShots, updateShot, uploadVideoToShot, removeVideoFromShot } = useStoryboardStore();
-  const { characters } = useKnowledgeStore();
-  const episode = useProductionStore((s) => s.episodes.find((e) => e.id === episodeId));
+  const { projects, currentProjectId } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId);
+  const episode = project?.episodes.find((e) => e.id === episodeId);
+  const characters = project?.characters || [];
 
   const [newShotDescription, setNewShotDescription] = useState('');
   const [newShotAngle, setNewShotAngle] = useState<CameraAngle>('medium');
@@ -26,15 +37,15 @@ export function StoryboardView({ episodeId }: { episodeId: string }) {
   const [isLoadingFromEpisode, setIsLoadingFromEpisode] = useState(false);
   const [uploadingShotId, setUploadingShotId] = useState<string | null>(null);
 
-  // 当 currentStoryboard 为 null 但 episode.storyboard 有数据时，自动加载
+  // 当 currentStoryboard 为 null 但 episode.generatedStoryboard 有数据时，自动加载
   useEffect(() => {
-    if (!currentStoryboard && episode?.storyboard) {
+    if (!currentStoryboard && episode?.generatedStoryboard) {
       setIsLoadingFromEpisode(true);
       try {
-        const jsonStart = episode.storyboard.indexOf('[');
-        const jsonEnd = episode.storyboard.lastIndexOf(']');
+        const jsonStart = episode.generatedStoryboard.indexOf('[');
+        const jsonEnd = episode.generatedStoryboard.lastIndexOf(']');
         if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-          const data = JSON.parse(episode.storyboard.slice(jsonStart, jsonEnd + 1));
+          const data = JSON.parse(episode.generatedStoryboard.slice(jsonStart, jsonEnd + 1));
           if (Array.isArray(data) && data.length > 0) {
             const storyboard = useStoryboardStore.getState().createStoryboard(episodeId);
             for (const item of data) {
@@ -50,7 +61,7 @@ export function StoryboardView({ episodeId }: { episodeId: string }) {
         setIsLoadingFromEpisode(false);
       }
     }
-  }, [currentStoryboard, episode?.storyboard, episodeId]);
+  }, [currentStoryboard, episode?.generatedStoryboard, episodeId]);
 
   const handleAddShot = () => {
     if (!newShotDescription.trim() || !currentStoryboard) return;
@@ -60,6 +71,15 @@ export function StoryboardView({ episodeId }: { episodeId: string }) {
 
   const handleUpdateCharacterRefs = (shotId: string, refs: ShotCharacterRef[]) => {
     updateShot(shotId, { characterRefs: refs });
+  };
+
+  const handleCharacterImageDragStart = (e: React.DragEvent, imageUrl: string) => {
+    e.stopPropagation();
+    const fullUrl = resolveVideoUrl(imageUrl);
+    e.dataTransfer.setData('text/uri-list', fullUrl);
+    e.dataTransfer.setData('text/plain', fullUrl);
+    e.dataTransfer.setData('character-image-drag', JSON.stringify({ imageUrl }));
+    e.dataTransfer.effectAllowed = 'copy';
   };
 
   const handleUploadVideo = async (shotId: string, file: File) => {
@@ -82,22 +102,13 @@ export function StoryboardView({ episodeId }: { episodeId: string }) {
     }
   };
 
-  const cameraAngleLabels: Record<CameraAngle, string> = {
-    wide: '广角',
-    medium: '中景',
-    close_up: '特写',
-    over_shoulder: '过肩',
-    pov: 'POV',
-    bird_eye: '鸟瞰',
-    low_angle: '低角',
-  };
-
   if (!currentStoryboard) {
     if (isLoadingFromEpisode) {
       return (
-        <div className="h-full flex items-center justify-center text-neutral-500">
+        <div className="h-full flex items-center justify-center text-neutral-400">
           <div className="text-center">
-            <p>正在加载分镜...</p>
+            <div className="w-8 h-8 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin mx-auto mb-3" />
+            <p className="font-mono text-sm tracking-wider">LOADING</p>
           </div>
         </div>
       );
@@ -105,8 +116,9 @@ export function StoryboardView({ episodeId }: { episodeId: string }) {
     return (
       <div className="h-full flex items-center justify-center text-neutral-500">
         <div className="text-center">
-          <p>尚未创建分镜</p>
-          <p className="text-xs mt-1">请先在左侧生成剧本，再生成分镜</p>
+          <div className="text-5xl mb-4 opacity-20">&#127916;</div>
+          <p className="text-lg mb-1">尚未创建分镜</p>
+          <p className="text-sm text-neutral-600">请先在左侧生成剧本，再生成分镜</p>
         </div>
       </div>
     );
@@ -115,209 +127,219 @@ export function StoryboardView({ episodeId }: { episodeId: string }) {
   const editingShot = editingShotId ? currentStoryboard.shots.find((s) => s.id === editingShotId) : null;
 
   return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <h3 className="text-white font-medium">分镜 ({currentStoryboard.shots.length})</h3>
-          {currentStoryboard.shots.length > 0 && (
-            <button
-              onClick={() => {
-                if (confirm('确定清空所有镜头？')) {
-                  clearShots();
-                }
-              }}
-              className="px-2 py-1 text-xs text-red-400 hover:text-red-300 border border-red-900 rounded"
+    <div className="h-full flex flex-col bg-neutral-950">
+      {/* Header */}
+      <div className="flex-shrink-0 px-6 py-4 border-b border-neutral-800/50 bg-neutral-950/80 backdrop-blur-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-500 font-mono text-xs tracking-widest">SCENE</span>
+              <h3 className="text-white font-light tracking-wide">
+                分镜序列
+              </h3>
+              <span className="font-mono text-xs text-neutral-500 bg-neutral-900 px-2 py-0.5 rounded">
+                {String(currentStoryboard.shots.length).padStart(2, '0')} SHOTS
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              value={newShotAngle}
+              onChange={(e) => setNewShotAngle(e.target.value as CameraAngle)}
+              className="px-3 py-1.5 text-sm bg-neutral-900 border border-neutral-700/50 rounded text-neutral-300 font-mono text-xs focus:outline-none focus:border-amber-500/50"
             >
-              清空全部
+              {Object.entries(cameraAngleLabels).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={newShotDescription}
+              onChange={(e) => setNewShotDescription(e.target.value)}
+              placeholder="输入镜头描述..."
+              className="px-4 py-1.5 text-sm bg-neutral-900 border border-neutral-700/50 rounded text-white placeholder-neutral-600 w-56 font-mono text-xs focus:outline-none focus:border-amber-500/50"
+              onKeyDown={(e) => e.key === 'Enter' && handleAddShot()}
+            />
+            <button
+              onClick={handleAddShot}
+              className="px-4 py-1.5 text-sm bg-amber-600 text-black font-medium rounded hover:bg-amber-500 transition-colors"
+            >
+              + ADD
             </button>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <select
-            value={newShotAngle}
-            onChange={(e) => setNewShotAngle(e.target.value as CameraAngle)}
-            className="px-2 py-1 text-sm bg-neutral-800 border border-neutral-700 rounded text-white"
-          >
-            {Object.entries(cameraAngleLabels).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            value={newShotDescription}
-            onChange={(e) => setNewShotDescription(e.target.value)}
-            placeholder="镜头描述..."
-            className="px-3 py-1 text-sm bg-neutral-800 border border-neutral-700 rounded text-white placeholder-neutral-500 w-48"
-            onKeyDown={(e) => e.key === 'Enter' && handleAddShot()}
-          />
-          <button
-            onClick={handleAddShot}
-            className="px-3 py-1 text-sm bg-white text-black rounded hover:bg-neutral-200"
-          >
-            + 添加镜头
-          </button>
+            {currentStoryboard.shots.length > 0 && (
+              <button
+                onClick={() => confirm('确定清空所有镜头？') && clearShots()}
+                className="px-3 py-1.5 text-xs text-red-400/70 hover:text-red-400 border border-red-900/30 rounded transition-colors"
+              >
+                CLEAR ALL
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
-        {currentStoryboard.shots.map((shot, idx) => (
-          <ShotCard
-            key={shot.id}
-            shot={shot}
-            idx={idx}
-            characters={characters}
-            uploadingShotId={uploadingShotId}
-            cameraAngleLabels={cameraAngleLabels}
-            onUploadVideo={handleUploadVideo}
-            onRemoveVideo={handleRemoveVideo}
-            onDeleteShot={deleteShot}
-            onUpdateShot={updateShot}
-            onUpdateCharacterRefs={handleUpdateCharacterRefs}
-            onSetEditingShotId={setEditingShotId}
-          />
-        ))}
+      {/* Shot Grid */}
+      <div className="flex-1 overflow-auto px-6 py-6">
+        <div className="grid grid-cols-3 xl:grid-cols-4 gap-6">
+          {currentStoryboard.shots.map((shot, idx) => (
+            <ShotCard
+              key={shot.id}
+              shot={shot}
+              idx={idx}
+              characters={characters}
+              uploadingShotId={uploadingShotId}
+              onUploadVideo={handleUploadVideo}
+              onRemoveVideo={handleRemoveVideo}
+              onDeleteShot={deleteShot}
+              onUpdateShot={updateShot}
+              onUpdateCharacterRefs={handleUpdateCharacterRefs}
+              onSetEditingShotId={setEditingShotId}
+            />
+          ))}
+        </div>
       </div>
 
       {/* 角色编辑弹窗 */}
       {editingShot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-lg bg-neutral-900 border border-neutral-700 rounded-xl p-6 max-h-[80vh] overflow-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium text-white">编辑镜头角色</h3>
-              <button onClick={() => setEditingShotId(null)} className="text-neutral-400 hover:text-white text-xl">&times;</button>
-            </div>
-
-            <div className="mb-4">
-              <p className="text-sm text-neutral-400 mb-2">{editingShot.description}</p>
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-white">选择角色：</p>
-              {characters.length === 0 ? (
-                <p className="text-neutral-500 text-sm">暂无角色，请在知识库中添加</p>
-              ) : (
-                characters.map((char) => {
-                  const existingRef = editingShot.characterRefs?.find((r) => r.characterId === char.id);
-                  const images = char.card.images || [];
-                  const defaultImg = getCharacterDefaultImage(char.card);
-
-                  return (
-                    <div key={char.id} className="bg-neutral-800 rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-white font-medium">{char.name}</span>
-                        <button
-                          onClick={() => {
-                            if (existingRef) {
-                              handleUpdateCharacterRefs(
-                                editingShot.id,
-                                (editingShot.characterRefs || []).filter((r) => r.characterId !== char.id)
-                              );
-                            } else if (images.length > 0) {
-                              handleUpdateCharacterRefs(editingShot.id, [
-                                ...(editingShot.characterRefs || []),
-                                { characterId: char.id, imageUrl: images[0], position: 'center' },
-                              ]);
-                            } else if (defaultImg) {
-                              handleUpdateCharacterRefs(editingShot.id, [
-                                ...(editingShot.characterRefs || []),
-                                { characterId: char.id, imageUrl: defaultImg, position: 'center' },
-                              ]);
-                            }
-                          }}
-                          className={`px-2 py-1 text-xs rounded ${
-                            existingRef
-                              ? 'bg-red-600 text-white hover:bg-red-500'
-                              : 'bg-blue-600 text-white hover:bg-blue-500'
-                          }`}
-                        >
-                          {existingRef ? '移除' : '添加'}
-                        </button>
-                      </div>
-
-                      {existingRef && images.length > 1 && (
-                        <div className="mt-2">
-                          <p className="text-xs text-neutral-500 mb-1">选择图片：</p>
-                          <div className="flex gap-2 flex-wrap">
-                            {images.map((img, imgIdx) => (
-                              <button
-                                key={imgIdx}
-                                onClick={() => {
-                                  handleUpdateCharacterRefs(
-                                    editingShot.id,
-                                    (editingShot.characterRefs || []).map((r) =>
-                                      r.characterId === char.id ? { ...r, imageUrl: img } : r
-                                    )
-                                  );
-                                }}
-                                className={`w-12 h-12 rounded overflow-hidden border-2 ${
-                                  existingRef.imageUrl === img ? 'border-blue-500' : 'border-transparent'
-                                }`}
-                              >
-                                <img src={img} alt="" className="w-full h-full object-cover" />
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {existingRef && (
-                        <div className="mt-2">
-                          <p className="text-xs text-neutral-500 mb-1">位置：</p>
-                          <div className="flex gap-2">
-                            {(['left', 'center', 'right', 'background'] as const).map((pos) => (
-                              <button
-                                key={pos}
-                                onClick={() => {
-                                  handleUpdateCharacterRefs(
-                                    editingShot.id,
-                                    (editingShot.characterRefs || []).map((r) =>
-                                      r.characterId === char.id ? { ...r, position: pos } : r
-                                    )
-                                  );
-                                }}
-                                className={`px-2 py-1 text-xs rounded ${
-                                  existingRef.position === pos
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600'
-                                }`}
-                              >
-                                {pos === 'left' ? '左' : pos === 'center' ? '中' : pos === 'right' ? '右' : '背景'}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => setEditingShotId(null)}
-                className="px-4 py-2 bg-white text-black rounded hover:bg-neutral-200"
-              >
-                完成
-              </button>
-            </div>
-          </div>
-        </div>
+        <CharacterEditModal
+          shot={editingShot}
+          characters={characters}
+          onClose={() => setEditingShotId(null)}
+          onUpdateCharacterRefs={handleUpdateCharacterRefs}
+          onCharacterImageDragStart={handleCharacterImageDragStart}
+        />
       )}
     </div>
   );
 }
 
-// ========== 镜头卡片组件（含拖放 + inline editing） ==========
+// ========== 角色编辑弹窗 ==========
+
+function CharacterEditModal({
+  shot,
+  characters,
+  onClose,
+  onUpdateCharacterRefs,
+  onCharacterImageDragStart,
+}: {
+  shot: Shot;
+  characters: Character[];
+  onClose: () => void;
+  onUpdateCharacterRefs: (shotId: string, refs: ShotCharacterRef[]) => void;
+  onCharacterImageDragStart: (e: React.DragEvent, imageUrl: string) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-neutral-900 border border-neutral-700/50 rounded-xl p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-white font-mono text-sm tracking-wider">CHARACTER ASSIGN</h3>
+            <p className="text-neutral-500 text-xs mt-1 line-clamp-1">{shot.description}</p>
+          </div>
+          <button onClick={onClose} className="text-neutral-500 hover:text-white transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          {characters.length === 0 ? (
+            <p className="text-neutral-600 text-sm text-center py-8 font-mono text-xs">NO CHARACTERS IN KNOWLEDGE BASE</p>
+          ) : (
+            characters.map((char) => {
+              const existingRef = shot.characterRefs?.find((r) => r.characterId === char.id);
+              const images = char.card.images || [];
+              const defaultImg = getCharacterDefaultImage(char.card);
+
+              return (
+                <div key={char.id} className="bg-neutral-800/50 rounded-lg p-3 border border-neutral-800">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {existingRef?.imageUrl && (
+                        <img src={existingRef.imageUrl} alt="" className="w-8 h-8 rounded object-cover border border-neutral-700" />
+                      )}
+                      <span className="text-white text-sm font-mono">{char.name}</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (existingRef) {
+                          onUpdateCharacterRefs(shot.id, (shot.characterRefs || []).filter((r) => r.characterId !== char.id));
+                        } else if (images.length > 0) {
+                          onUpdateCharacterRefs(shot.id, [...(shot.characterRefs || []), { characterId: char.id, imageUrl: images[0], position: 'center' }]);
+                        } else if (defaultImg) {
+                          onUpdateCharacterRefs(shot.id, [...(shot.characterRefs || []), { characterId: char.id, imageUrl: defaultImg, position: 'center' }]);
+                        }
+                      }}
+                      className={`px-3 py-1 text-xs rounded font-mono transition-colors ${
+                        existingRef ? 'bg-red-600/80 text-white hover:bg-red-600' : 'bg-amber-600/80 text-black hover:bg-amber-600'
+                      }`}
+                    >
+                      {existingRef ? 'REMOVE' : 'ADD'}
+                    </button>
+                  </div>
+
+                  {existingRef && images.length > 1 && (
+                    <div className="mt-3 flex gap-2 flex-wrap">
+                      {images.map((img, imgIdx) => (
+                        <button
+                          key={imgIdx}
+                          draggable
+                          onDragStart={(e) => onCharacterImageDragStart(e, img)}
+                          onClick={() => onUpdateCharacterRefs(shot.id, (shot.characterRefs || []).map((r) => r.characterId === char.id ? { ...r, imageUrl: img } : r))}
+                          className={`relative w-12 h-12 rounded overflow-hidden border-2 transition-all ${
+                            existingRef.imageUrl === img ? 'border-amber-500 scale-105' : 'border-transparent hover:border-neutral-600'
+                          }`}
+                        >
+                          <img src={img} alt="" className="w-full h-full object-cover cursor-grab active:cursor-grabbing" />
+                          <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center">
+                            <svg className="w-4 h-4 text-white opacity-0 hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12M8 12h12M8 17h12" />
+                            </svg>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {existingRef && (
+                    <div className="mt-3 flex gap-1">
+                      {(['left', 'center', 'right', 'background'] as const).map((pos) => (
+                        <button
+                          key={pos}
+                          onClick={() => onUpdateCharacterRefs(shot.id, (shot.characterRefs || []).map((r) => r.characterId === char.id ? { ...r, position: pos } : r))}
+                          className={`flex-1 py-1 text-xs rounded font-mono transition-colors ${
+                            existingRef.position === pos ? 'bg-amber-600 text-black' : 'bg-neutral-700 text-neutral-400 hover:bg-neutral-600'
+                          }`}
+                        >
+                          {pos === 'left' ? '←' : pos === 'center' ? '•' : pos === 'right' ? '→' : '▦'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 bg-neutral-800 text-white text-sm font-mono rounded hover:bg-neutral-700 transition-colors border border-neutral-700">
+            DONE
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== 镜头卡片组件 ==========
 
 function ShotCard({
   shot,
   idx,
   characters,
   uploadingShotId,
-  cameraAngleLabels,
   onUploadVideo,
   onRemoveVideo,
   onDeleteShot,
@@ -329,7 +351,6 @@ function ShotCard({
   idx: number;
   characters: Character[];
   uploadingShotId: string | null;
-  cameraAngleLabels: Record<CameraAngle, string>;
   onUploadVideo: (shotId: string, file: File) => void;
   onRemoveVideo: (shotId: string) => void;
   onDeleteShot: (shotId: string) => void;
@@ -337,104 +358,56 @@ function ShotCard({
   onUpdateCharacterRefs: (shotId: string, refs: ShotCharacterRef[]) => void;
   onSetEditingShotId: (id: string | null) => void;
 }) {
-  const [dragOverType, setDragOverType] = useState<'character' | 'frame' | null>(null);
-  const [editingField, setEditingField] = useState<'description' | 'duration' | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const descInputRef = useRef<HTMLInputElement>(null);
-  const durationInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
-  // 自动聚焦编辑输入框
-  useEffect(() => {
-    if (editingField === 'description' && descInputRef.current) {
-      descInputRef.current.focus();
-      descInputRef.current.select();
-    }
-    if (editingField === 'duration' && durationInputRef.current) {
-      durationInputRef.current.focus();
-      durationInputRef.current.select();
-    }
-  }, [editingField]);
-
-  // ---- 拖放处理 ----
-
-  const hasCharacterImage = (types: DataTransferItemList | readonly string[]): boolean => {
-    return Array.from(types as ArrayLike<string>).includes('character-image');
-  };
-
-  const hasFrameRef = (types: DataTransferItemList | readonly string[]): boolean => {
-    return Array.from(types as ArrayLike<string>).includes('frame-ref');
-  };
-
-  const hasImageFile = (dt: DataTransfer): boolean => {
-    if (dt.files && dt.files.length > 0) {
-      return dt.files[0].type.startsWith('image/');
-    }
-    return false;
-  };
-
-  // 整个卡片的 drag over（角色图拖入）
+  // 拖放处理
   const handleDragOver = (e: React.DragEvent) => {
     const types = e.dataTransfer.types;
-    if (hasCharacterImage(types) || hasFrameRef(types) || hasImageFile(e.dataTransfer)) {
+    if (types.includes('character-image') || types.includes('frame-ref') || types.includes('character-image-drag')) {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'copy';
-      if (hasCharacterImage(types)) {
-        setDragOverType('character');
-      } else {
-        setDragOverType('frame');
-      }
+      setIsDragOver(true);
     }
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    // 只在真正离开卡片时才取消高亮
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX;
-    const y = e.clientY;
-    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
-      setDragOverType(null);
-    }
-  };
+  const handleDragLeave = () => setIsDragOver(false);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setDragOverType(null);
+    setIsDragOver(false);
 
-    // 1. 从知识库拖入角色图
-    const charImageData = e.dataTransfer.getData('character-image');
+    // 角色图拖入
+    const charImageData = e.dataTransfer.getData('character-image') || e.dataTransfer.getData('character-image-drag');
     if (charImageData) {
       try {
-        const { characterId, imageUrl } = JSON.parse(charImageData) as { characterId: string; imageUrl: string };
-        const existingRefs = shot.characterRefs || [];
-        // 避免重复添加
-        if (existingRefs.some((r) => r.characterId === characterId)) return;
-        onUpdateCharacterRefs(shot.id, [
-          ...existingRefs,
-          { characterId, imageUrl, position: 'center' },
-        ]);
-      } catch (err) {
-        console.error('解析角色拖拽数据失败:', err);
-      }
+        const { characterId, imageUrl } = JSON.parse(charImageData);
+        if (characterId && imageUrl) {
+          const existingRefs = shot.characterRefs || [];
+          if (!existingRefs.some((r) => r.characterId === characterId)) {
+            onUpdateCharacterRefs(shot.id, [...existingRefs, { characterId, imageUrl, position: 'center' }]);
+          }
+        }
+      } catch {}
       return;
     }
 
-    // 2. 从其他镜头拖入尾帧作为首帧
+    // 帧参考拖入
     const frameRefData = e.dataTransfer.getData('frame-ref');
     if (frameRefData) {
       try {
-        const { frameUrl } = JSON.parse(frameRefData);
+        const { frameUrl, type } = JSON.parse(frameRefData);
         if (frameUrl) {
-          onUpdateShot(shot.id, { firstFrameUrl: frameUrl });
+          if (type === 'lastFrame' || type === 'firstFrame') {
+            onUpdateShot(shot.id, { firstFrameUrl: frameUrl });
+          }
         }
-      } catch (err) {
-        console.error('解析帧参考拖拽数据失败:', err);
-      }
+      } catch {}
       return;
     }
 
-    // 3. 从本地文件拖入图片作为首帧
+    // 图片文件拖入
     const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith('image/')) {
+    if (file?.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const dataUrl = ev.target?.result as string;
@@ -443,263 +416,267 @@ function ShotCard({
         }
       };
       reader.readAsDataURL(file);
-      return;
-    }
-
-    // 4. 也支持拖入图片作为尾帧（按住 Alt）
-    if (file && file.type.startsWith('image/') && e.altKey) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string;
-        if (dataUrl) {
-          onUpdateShot(shot.id, { lastFrameUrl: dataUrl });
-        }
-      };
-      reader.readAsDataURL(file);
     }
   };
 
-  // ---- 尾帧拖出 ----
+  // 首帧拖出
+  const handleFirstFrameDragStart = (e: React.DragEvent) => {
+    if (!shot.firstFrameUrl) return;
+    const fullUrl = resolveVideoUrl(shot.firstFrameUrl);
+    e.dataTransfer.setData('text/uri-list', fullUrl);
+    e.dataTransfer.setData('text/plain', fullUrl);
+    e.dataTransfer.setData('frame-ref', JSON.stringify({ sourceShotId: shot.id, frameUrl: shot.firstFrameUrl, type: 'firstFrame' }));
+    e.dataTransfer.effectAllowed = 'copy';
+  };
 
+  // 尾帧拖出
   const handleLastFrameDragStart = (e: React.DragEvent) => {
-    e.stopPropagation();
     const frameUrl = shot.lastFrameUrl || shot.thumbnailUrl;
-    if (frameUrl) {
-      e.dataTransfer.setData('frame-ref', JSON.stringify({
-        sourceShotId: shot.id,
-        frameUrl,
-        type: 'lastFrame',
-      }));
-      e.dataTransfer.effectAllowed = 'copy';
-    }
+    if (!frameUrl) return;
+    const fullUrl = resolveVideoUrl(frameUrl);
+    e.dataTransfer.setData('text/uri-list', fullUrl);
+    e.dataTransfer.setData('text/plain', fullUrl);
+    e.dataTransfer.setData('frame-ref', JSON.stringify({ sourceShotId: shot.id, frameUrl, type: 'lastFrame' }));
+    e.dataTransfer.effectAllowed = 'copy';
   };
 
-  // ---- Inline editing ----
-
-  const startEditDescription = () => {
-    setEditValue(shot.description);
-    setEditingField('description');
+  // 角色图片拖出
+  const handleCharacterImageDragStart = (e: React.DragEvent, imageUrl: string) => {
+    e.stopPropagation();
+    const fullUrl = resolveVideoUrl(imageUrl);
+    e.dataTransfer.setData('text/uri-list', fullUrl);
+    e.dataTransfer.setData('text/plain', fullUrl);
+    e.dataTransfer.setData('character-image-drag', JSON.stringify({ imageUrl }));
+    e.dataTransfer.effectAllowed = 'copy';
   };
-
-  const saveDescription = () => {
-    if (editValue.trim() && editValue !== shot.description) {
-      onUpdateShot(shot.id, { description: editValue.trim() });
-    }
-    setEditingField(null);
-  };
-
-  const startEditDuration = () => {
-    setEditValue(String(shot.duration));
-    setEditingField('duration');
-  };
-
-  const saveDuration = () => {
-    const num = parseFloat(editValue);
-    if (!isNaN(num) && num > 0 && num !== shot.duration) {
-      onUpdateShot(shot.id, { duration: num });
-    }
-    setEditingField(null);
-  };
-
-  // ---- 渲染 ----
 
   const characterBadges = (shot.characterRefs || []).map((ref) => {
     const char = characters.find((c) => c.id === ref.characterId);
     return char ? { name: char.name, imageUrl: ref.imageUrl } : null;
   }).filter(Boolean);
 
-  const borderClass = dragOverType === 'character'
-    ? 'ring-2 ring-blue-500 ring-offset-1 ring-offset-neutral-950'
-    : dragOverType === 'frame'
-    ? 'ring-2 ring-green-500 ring-offset-1 ring-offset-neutral-950'
-    : '';
-
   return (
     <div
-      className={`bg-neutral-900 rounded-lg overflow-hidden transition-all ${borderClass}`}
+      className={`relative rounded-xl overflow-hidden transition-all duration-300 ${
+        isDragOver ? 'ring-2 ring-amber-500 scale-[1.02]' : ''
+      } bg-neutral-900 border border-neutral-800/50 hover:border-neutral-700/80`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="aspect-video bg-neutral-800 flex items-center justify-center relative group">
-        {shot.videoUrl ? (
-          <video
-            src={resolveVideoUrl(shot.videoUrl)}
-            className="w-full h-full object-cover"
-            muted
-            preload="metadata"
-          />
-        ) : shot.imageUrl ? (
-          <img src={shot.imageUrl} alt={`shot ${idx + 1}`} className="w-full h-full object-cover" />
-        ) : (
-          <span className="text-neutral-600 text-2xl">&#127916;</span>
-        )}
-
-        {/* 角色数量标识 */}
-        {shot.characterRefs && shot.characterRefs.length > 0 && (
-          <div className="absolute top-1 right-1 bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded">
-            {shot.characterRefs.length}人
-          </div>
-        )}
-
-        {/* 连续性指示器（可拖拽的尾帧） */}
-        <div className="absolute top-1 left-1 flex gap-1">
-          {shot.firstFrameUrl && (
-            <span className="bg-black/70 text-blue-300 text-[10px] px-1 rounded">首帧</span>
-          )}
-          {shot.lastFrameUrl && (
-            <span
-              className="bg-black/70 text-green-300 text-[10px] px-1 rounded cursor-grab active:cursor-grabbing"
-              draggable
-              onDragStart={handleLastFrameDragStart}
-              title="拖拽到其他镜头作为首帧参考"
-            >
-              尾帧
-            </span>
-          )}
-        </div>
-
-        {/* 视频文件名 */}
-        {shot.videoFileName && (
-          <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1 rounded truncate max-w-[90%]">
-            {shot.videoFileName}
-          </div>
-        )}
-
-        {/* 上传/移除视频悬浮按钮 */}
-        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 group-hover:bg-black/40 transition-colors opacity-0 group-hover:opacity-100">
-          {shot.videoUrl ? (
-            <button
-              onClick={() => onRemoveVideo(shot.id)}
-              className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-500"
-            >
-              移除视频
-            </button>
-          ) : (
-            <label className="px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-500 cursor-pointer">
-              {uploadingShotId === shot.id ? '上传中...' : '上传视频'}
-              <input
-                type="file"
-                accept="video/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) onUploadVideo(shot.id, file);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-          )}
-        </div>
-
-        {/* 上传中 loading 遮罩 */}
-        {uploadingShotId === shot.id && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-            <div className="text-white text-sm">上传中...</div>
-          </div>
-        )}
-
-        {/* 拖放提示遮罩 */}
-        {dragOverType && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 border-2 border-dashed rounded pointer-events-none"
-            style={{ borderColor: dragOverType === 'character' ? '#3b82f6' : '#22c55e' }}
-          >
-            <div className="text-white text-sm">
-              {dragOverType === 'character' ? '添加角色参考' : '设置首帧参考'}
-            </div>
-          </div>
-        )}
+      {/* 胶片孔装饰 - 左侧 */}
+      <div className="absolute left-0 top-0 bottom-0 w-2 flex flex-col justify-around py-4 pointer-events-none">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="w-1 h-1.5 bg-neutral-700/50 rounded-sm" />
+        ))}
+      </div>
+      {/* 胶片孔装饰 - 右侧 */}
+      <div className="absolute right-0 top-0 bottom-0 w-2 flex flex-col justify-around py-4 pointer-events-none">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="w-1 h-1.5 bg-neutral-700/50 rounded-sm" />
+        ))}
       </div>
 
-      <div className="p-3">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-neutral-500">镜头 {idx + 1}</span>
-          <span className="text-[10px] px-1.5 py-0.5 bg-neutral-800 text-neutral-400 rounded">
-            {cameraAngleLabels[shot.cameraAngle]}
+      {/* 主内容区 */}
+      <div className="pl-4 pr-4">
+        {/* 镜头头部信息 */}
+        <div className="flex items-center justify-between py-2 border-b border-neutral-800/50">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs text-amber-500/80 bg-amber-500/10 px-1.5 py-0.5 rounded">
+              {String(idx + 1).padStart(2, '0')}
+            </span>
+            <span className="font-mono text-[10px] text-neutral-500 uppercase tracking-wider">
+              {cameraAngleLabels[shot.cameraAngle]}
+            </span>
+          </div>
+          <span className="font-mono text-[10px] text-neutral-600">
+            {shot.duration}s
           </span>
         </div>
 
-        {/* 可编辑描述 */}
-        {editingField === 'description' ? (
-          <input
-            ref={descInputRef}
-            type="text"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={saveDescription}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') saveDescription();
-              if (e.key === 'Escape') setEditingField(null);
-            }}
-            className="w-full px-2 py-1 text-sm bg-neutral-800 border border-neutral-600 rounded text-white focus:outline-none focus:border-blue-500"
-          />
-        ) : (
-          <p
-            onClick={startEditDescription}
-            className="text-sm text-neutral-300 line-clamp-2 cursor-text hover:text-white transition-colors"
-            title="点击编辑描述"
-          >
-            {shot.description}
-          </p>
-        )}
-
-        {/* 可编辑时长 */}
-        {editingField === 'duration' ? (
-          <input
-            ref={durationInputRef}
-            type="number"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={saveDuration}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') saveDuration();
-              if (e.key === 'Escape') setEditingField(null);
-            }}
-            step="0.5"
-            min="0.5"
-            className="w-16 px-2 py-0.5 text-xs bg-neutral-800 border border-neutral-600 rounded text-white focus:outline-none focus:border-blue-500"
-          />
-        ) : (
-          <p
-            onClick={startEditDuration}
-            className="text-xs text-neutral-600 mt-1 cursor-pointer hover:text-neutral-400 transition-colors"
-            title="点击编辑时长"
-          >
-            {shot.duration}s
-          </p>
-        )}
-
-        {/* 角色参考条 */}
-        {characterBadges.length > 0 && (
-          <div className="flex gap-1 mt-2 flex-wrap">
-            {characterBadges.map((badge, bIdx) => badge && (
-              <div key={bIdx} className="flex items-center gap-1 bg-neutral-800 rounded px-1.5 py-0.5">
-                {badge.imageUrl && (
-                  <img src={badge.imageUrl} alt={badge.name} className="w-4 h-4 rounded object-cover" />
+        {/* 视频/图片区域 */}
+        <div className="relative py-2">
+          <div className="aspect-video bg-neutral-950 rounded-lg overflow-hidden relative">
+            {shot.videoUrl ? (
+              <>
+                <video
+                  src={resolveVideoUrl(shot.videoUrl)}
+                  className="w-full h-full object-cover"
+                  controls
+                  playsInline
+                  preload="metadata"
+                />
+                {/* 视频叠层信息 */}
+                {shot.videoFileName && (
+                  <div className="absolute bottom-1 left-1 right-1 flex justify-between items-center">
+                    <span className="font-mono text-[9px] text-white/60 bg-black/50 px-1 py-0.5 rounded truncate max-w-[70%]">
+                      {shot.videoFileName}
+                    </span>
+                  </div>
                 )}
-                <span className="text-[10px] text-white">{badge.name}</span>
+              </>
+            ) : (
+              <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-800/30 transition-colors group">
+                <svg className="w-8 h-8 text-neutral-600 group-hover:text-amber-500/50 transition-colors mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                </svg>
+                <span className="font-mono text-[10px] text-neutral-600 group-hover:text-neutral-400">DROP VIDEO</span>
+                <input
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onUploadVideo(shot.id, file);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            )}
+
+            {/* 上传中遮罩 */}
+            {uploadingShotId === shot.id && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                <div className="text-center">
+                  <div className="w-6 h-6 border border-amber-500/30 border-t-amber-500 rounded-full animate-spin mx-auto mb-2" />
+                  <span className="font-mono text-[10px] text-amber-500">UPLOADING</span>
+                </div>
+              </div>
+            )}
+
+            {/* 拖放高亮 */}
+            {isDragOver && (
+              <div className="absolute inset-0 bg-amber-500/20 border-2 border-dashed border-amber-500 flex items-center justify-center">
+                <span className="font-mono text-xs text-amber-500">DROP HERE</span>
+              </div>
+            )}
+          </div>
+
+          {/* 首尾帧时间条 */}
+          <div className="mt-2 flex items-center gap-1">
+            {/* 首帧 */}
+            <div
+              className={`w-14 h-10 rounded overflow-hidden flex-shrink-0 cursor-grab active:cursor-grabbing ${
+                shot.firstFrameUrl ? 'border border-blue-500/50' : 'border border-dashed border-neutral-700'
+              }`}
+              draggable={!!shot.firstFrameUrl}
+              onDragStart={handleFirstFrameDragStart}
+              title={shot.firstFrameUrl ? '拖拽到其他镜头或浏览器外' : '首帧 - 拖入图片设置'}
+            >
+              {shot.firstFrameUrl ? (
+                <img src={resolveVideoUrl(shot.firstFrameUrl)} alt="首帧" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="text-[8px] text-neutral-600 font-mono">IN</span>
+                </div>
+              )}
+            </div>
+
+            {/* 连接线 */}
+            <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-500/50 via-neutral-700 to-green-500/50 rounded-full relative">
+              {shot.videoUrl && (
+                <div className="absolute inset-y-0 left-1/2 w-1 h-1 bg-amber-500 rounded-full transform -translate-x-1/2 -translate-y-1/2 top-1/2" />
+              )}
+            </div>
+
+            {/* 视频缩略图（如果存在视频） */}
+            {shot.videoUrl && (
+              <div className="w-8 h-10 rounded overflow-hidden border border-amber-500/30 flex-shrink-0">
+                <video
+                  src={resolveVideoUrl(shot.videoUrl)}
+                  className="w-full h-full object-cover"
+                  muted
+                  preload="metadata"
+                />
+              </div>
+            )}
+
+            {/* 连接线2 */}
+            {shot.videoUrl && (
+              <div className="flex-1 h-0.5 bg-gradient-to-r from-amber-500/50 via-neutral-700 to-green-500/50 rounded-full" />
+            )}
+
+            {/* 尾帧 */}
+            <div
+              className={`w-14 h-10 rounded overflow-hidden flex-shrink-0 cursor-grab active:cursor-grabbing ${
+                (shot.lastFrameUrl || shot.thumbnailUrl) ? 'border border-green-500/50' : 'border border-dashed border-neutral-700'
+              }`}
+              draggable={!!(shot.lastFrameUrl || shot.thumbnailUrl)}
+              onDragStart={handleLastFrameDragStart}
+              title={(shot.lastFrameUrl || shot.thumbnailUrl) ? '拖拽到其他镜头或浏览器外' : '尾帧 - 上传视频后自动提取'}
+            >
+              {shot.lastFrameUrl || shot.thumbnailUrl ? (
+                <img src={resolveVideoUrl(shot.lastFrameUrl ?? shot.thumbnailUrl ?? '')} alt="尾帧" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="text-[8px] text-neutral-600 font-mono">OUT</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 删除尾帧按钮 */}
+          {(shot.lastFrameUrl || shot.thumbnailUrl) && isHovered && (
+            <button
+              onClick={() => onUpdateShot(shot.id, { lastFrameUrl: undefined })}
+              className="absolute bottom-14 right-0 w-5 h-5 bg-red-600/80 text-white text-xs rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+              title="删除尾帧"
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        {/* 镜头描述 - 可选中拷贝 */}
+        <p className="text-xs text-neutral-400 leading-relaxed select-text py-2 border-t border-neutral-800/30">
+          {shot.description}
+        </p>
+
+        {/* 角色标签 - 可预览和拖拽 */}
+        {characterBadges.length > 0 && (
+          <div className="flex gap-2 flex-wrap">
+            {characterBadges.map((badge, bIdx) => badge && (
+              <div key={bIdx} className="relative group flex items-center gap-1.5 bg-neutral-800/80 rounded px-1.5 py-1 border border-neutral-700/30">
+                <div
+                  className="w-8 h-8 rounded overflow-hidden cursor-grab active:cursor-grabbing border border-neutral-600"
+                  draggable
+                  onDragStart={(e) => handleCharacterImageDragStart(e, badge.imageUrl)}
+                >
+                  <img src={badge.imageUrl} alt={badge.name} className="w-full h-full object-cover" />
+                </div>
+                <span className="text-[10px] text-neutral-300 font-mono">{badge.name}</span>
+                {/* 悬停提示 */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-black/90 text-white text-[9px] font-mono rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-10">
+                  拖拽到外部保存
+                </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* 拖放角色参考提示 */}
-        {characterBadges.length === 0 && (
-          <p className="text-[10px] text-neutral-700 mt-1">拖拽角色图到此处添加</p>
-        )}
-
-        <div className="flex gap-2 mt-2">
+        {/* 操作按钮 - 始终可见 */}
+        <div className="flex items-center gap-2 pt-2 mt-auto border-t border-neutral-800/30">
           <button
             onClick={() => onSetEditingShotId(shot.id)}
-            className="text-xs text-blue-400 hover:text-blue-300"
+            className="flex-1 py-1 text-[10px] font-mono text-amber-500/80 hover:text-amber-500 bg-amber-500/5 hover:bg-amber-500/10 rounded transition-colors border border-amber-500/20"
           >
-            编辑角色
+            ASSIGN
           </button>
+          {shot.videoUrl && (
+            <button
+              onClick={() => onRemoveVideo(shot.id)}
+              className="px-3 py-1 text-[10px] font-mono text-red-400/60 hover:text-red-400 rounded transition-colors border border-neutral-800"
+            >
+              RM
+            </button>
+          )}
           <button
             onClick={() => onDeleteShot(shot.id)}
-            className="text-xs text-red-400 hover:text-red-300"
+            className="px-2 py-1 text-[10px] font-mono text-neutral-600 hover:text-red-400 rounded transition-colors"
           >
-            删除
+            DEL
           </button>
         </div>
       </div>

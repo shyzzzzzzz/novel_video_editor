@@ -142,3 +142,46 @@ async def extract_audio(video_path: str, output_path: str) -> dict:
         return {"status": "ok", "output_path": output_path}
     except subprocess.CalledProcessError:
         raise HTTPException(status_code=500, detail="Audio extraction failed")
+
+
+class ExtractLastFrameRequest(BaseModel):
+    video_path: str
+    output_path: str
+
+
+@router.post("/extract_last_frame")
+async def extract_last_frame(req: ExtractLastFrameRequest) -> dict:
+    """Extract the last frame from a video using ffmpeg."""
+    safe_video = safe_path(req.video_path)
+    safe_output = safe_path(req.output_path)
+    safe_output.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        # First get video duration
+        probe_cmd = [
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_format",
+            str(safe_video),
+        ]
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
+        import json
+        data = json.loads(result.stdout)
+        duration = float(data["format"].get("duration", 0))
+
+        # Extract frame at last 0.1 seconds
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(max(0, duration - 0.1)),
+            "-i", str(safe_video),
+            "-vframes", "1",
+            "-q:v", "2",
+            str(safe_output),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"ffmpeg extract_last_frame error: {result.stderr}")
+            raise HTTPException(status_code=500, detail="Frame extraction failed")
+        return {"status": "ok", "output_path": req.output_path}
+    except subprocess.CalledProcessError:
+        raise HTTPException(status_code=500, detail="Frame extraction failed")

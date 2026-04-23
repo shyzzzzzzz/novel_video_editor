@@ -2,9 +2,9 @@ import { create } from 'zustand';
 import { Storyboard, Shot, CameraAngle } from '@/types';
 import { v4 as uuid } from 'uuid';
 import { loadPersistedData, createDebouncedSave } from '@/lib/persist-client';
-import { extractLastFrame } from '@/lib/api-client';
 
 const STORAGE_BASE = 'http://localhost:18080/api/storage';
+const FFMPEG_BASE = 'http://localhost:18080/ffmpeg';
 
 type StoryboardViewMode = 'grid' | 'timeline';
 
@@ -16,7 +16,7 @@ interface StoryboardState {
   loadStoryboard: (storyboard: Storyboard) => void;
   deleteStoryboard: () => void;
 
-  addShot: (storyboardId: string, description: string, cameraAngle: CameraAngle) => Shot;
+  addShot: (storyboardId: string, description: string, cameraAngle: CameraAngle, duration?: number) => Shot;
   updateShot: (shotId: string, updates: Partial<Shot>) => void;
   deleteShot: (shotId: string) => void;
   clearShots: () => void;
@@ -51,13 +51,13 @@ export const useStoryboardStore = create<StoryboardState>((set, get) => ({
 
   deleteStoryboard: () => set({ currentStoryboard: null }),
 
-  addShot: (storyboardId, description, cameraAngle) => {
+  addShot: (storyboardId, description, cameraAngle, duration = 5) => {
     const shot: Shot = {
       id: uuid(),
       sequence: get().currentStoryboard?.shots.length || 0,
       description,
       cameraAngle,
-      duration: 5,
+      duration,
     };
     set((state) => {
       if (!state.currentStoryboard || state.currentStoryboard.id !== storyboardId) return state;
@@ -145,26 +145,20 @@ export const useStoryboardStore = create<StoryboardState>((set, get) => ({
     });
     if (!uploadResp.ok) throw new Error(`上传失败: ${uploadResp.status}`);
 
-    const videoServerUrl = `${STORAGE_BASE.replace('/api/storage', '/storage/files')}/${serverPath}`;
-
-    // 提取尾帧
+    // 提取尾帧（使用后端 ffmpeg）
     let lastFrameServerPath: string | undefined;
     try {
-      const lastFrameDataUrl = await extractLastFrame(videoServerUrl);
-      if (lastFrameDataUrl) {
-        // 将 base64 dataURL 转为 Blob 上传
-        const res = await fetch(lastFrameDataUrl);
-        const blob = await res.blob();
-        const lastFramePath = `videos/${currentStoryboard.id}/${shotId}/last_frame.jpg`;
-        const lfFormData = new FormData();
-        lfFormData.append('file', blob, 'last_frame.jpg');
-        const lfResp = await fetch(`${STORAGE_BASE}/upload?path=${encodeURIComponent(lastFramePath)}`, {
-          method: 'POST',
-          body: lfFormData,
-        });
-        if (lfResp.ok) {
-          lastFrameServerPath = lastFramePath;
-        }
+      const lastFramePath = `videos/${currentStoryboard.id}/${shotId}/last_frame.jpg`;
+      const resp = await fetch(`${FFMPEG_BASE}/extract_last_frame`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_path: serverPath,
+          output_path: lastFramePath,
+        }),
+      });
+      if (resp.ok) {
+        lastFrameServerPath = lastFramePath;
       }
     } catch (err) {
       console.error('提取尾帧失败:', err);
@@ -181,11 +175,14 @@ export const useStoryboardStore = create<StoryboardState>((set, get) => ({
     }
     updateShot(shotId, updates);
 
-    // 自动接续：设置下一个镜头的首帧
+    // 自动接续：设置下一个镜头的首帧（使用最新 state）
     if (lastFrameServerPath) {
-      const nextShot = currentStoryboard.shots.find((s) => s.sequence === shot.sequence + 1);
-      if (nextShot) {
-        updateShot(nextShot.id, { firstFrameUrl: lastFrameServerPath });
+      const latestStoryboard = get().currentStoryboard;
+      if (latestStoryboard) {
+        const nextShot = latestStoryboard.shots.find((s) => s.sequence === shot.sequence + 1);
+        if (nextShot) {
+          updateShot(nextShot.id, { firstFrameUrl: lastFrameServerPath });
+        }
       }
     }
   },

@@ -1,17 +1,18 @@
 import { useState } from 'react';
-import { useKnowledgeStore } from '@/stores/knowledgeStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { PlotLine, PlotLineType } from '@/types';
 
 export function PlotLineLibrary() {
-  const { plotLines, addPlotLine, deletePlotLine, resolvePlotLine, getUnresolvedPlotLines } =
-    useKnowledgeStore();
+  const { projects, currentProjectId, addPlotLine, updatePlotLine, deletePlotLine } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId);
+  const plotLines = project?.plotLines || [];
   const [showAddForm, setShowAddForm] = useState(false);
   const [filterType, setFilterType] = useState<PlotLineType | 'all'>('all');
 
   const filteredPlotLines =
     filterType === 'all' ? plotLines : plotLines.filter((p) => p.type === filterType);
 
-  const unresolvedCount = getUnresolvedPlotLines().length;
+  const unresolvedCount = plotLines.filter((p) => p.status !== 'resolved').length;
 
   return (
     <div className="p-4">
@@ -69,7 +70,7 @@ export function PlotLineLibrary() {
               key={plotLine.id}
               plotLine={plotLine}
               onDelete={() => deletePlotLine(plotLine.id)}
-              onResolve={() => resolvePlotLine(plotLine.id)}
+              onResolve={() => updatePlotLine(plotLine.id, { status: 'resolved' })}
             />
           ))}
         </div>

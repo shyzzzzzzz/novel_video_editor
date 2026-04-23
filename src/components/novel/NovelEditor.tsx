@@ -1,48 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useNovelStore } from '@/stores/novelStore';
-import { savePersistedData } from '@/lib/persist-client';
+import { useProjectStore } from '@/stores/projectStore';
 import { Chapter } from '@/types';
 
 export function NovelEditor() {
-  const { getCurrentChapter, updateChapter, currentNovel } = useNovelStore();
-  const chapter = getCurrentChapter();
+  const { projects, currentProjectId, currentNovelId, currentChapterId, updateChapter } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId) || null;
+  const currentNovel = project?.novels.find((n) => n.id === currentNovelId) || null;
+  const chapter = currentNovel?.chapters.find((c) => c.id === currentChapterId) || null;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 手动保存函数
-  const handleSave = useCallback(() => {
-    if (!currentNovel) return;
-    setSaveStatus('saving');
-    savePersistedData('novels', {
-      currentNovel,
-      currentChapterId: useNovelStore.getState().currentChapterId,
-      storyNodes: useNovelStore.getState().storyNodes,
-    }).then(() => {
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-    });
-  }, [currentNovel]);
-
-  // Ctrl+S 保存
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        handleSave();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSave]);
-
-  useEffect(() => {
-    if (!chapter) return;
-    const timer = setTimeout(() => {
-      useNovelStore.getState().computeMetadata(chapter.id);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [chapter?.content, chapter?.id]);
 
   // 自动保存状态跟踪
   useEffect(() => {
@@ -50,22 +17,14 @@ export function NovelEditor() {
       setSaveStatus('saving');
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
-        if (currentNovel) {
-          savePersistedData('novels', {
-            currentNovel,
-            currentChapterId: useNovelStore.getState().currentChapterId,
-            storyNodes: useNovelStore.getState().storyNodes,
-          }).then(() => {
-            setSaveStatus('saved');
-            setTimeout(() => setSaveStatus('idle'), 2000);
-          });
-        }
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
       }, 1000);
     }
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [chapter?.content, currentNovel]);
+  }, [chapter?.content]);
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     if (!chapter) return;
@@ -75,6 +34,11 @@ export function NovelEditor() {
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!chapter) return;
     updateChapter(chapter.id, { title: e.target.value });
+  };
+
+  const handleStatusChange = (status: Chapter['status']) => {
+    if (!chapter) return;
+    updateChapter(chapter.id, { status });
   };
 
   const saveStatusText = {
@@ -112,7 +76,7 @@ export function NovelEditor() {
             {saveStatusText[saveStatus]}
           </span>
         )}
-        <StatusBadge status={chapter.status} />
+        <StatusBadge status={chapter.status} onStatusChange={handleStatusChange} />
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -143,7 +107,7 @@ export function NovelEditor() {
   );
 }
 
-function StatusBadge({ status }: { status: Chapter['status'] }) {
+function StatusBadge({ status, onStatusChange }: { status: Chapter['status']; onStatusChange: (s: Chapter['status']) => void }) {
   const config = {
     draft: { label: '草稿', className: 'bg-neutral-700 text-neutral-300' },
     writing: { label: '写作中', className: 'bg-yellow-900 text-yellow-300' },
@@ -154,8 +118,15 @@ function StatusBadge({ status }: { status: Chapter['status'] }) {
   const { label, className } = config[status];
 
   return (
-    <span className={`px-2 py-0.5 text-xs rounded ${className}`}>
-      {label}
-    </span>
+    <select
+      value={status}
+      onChange={(e) => onStatusChange(e.target.value as Chapter['status'])}
+      className={`px-2 py-0.5 text-xs rounded border-none cursor-pointer ${className}`}
+    >
+      <option value="draft">草稿</option>
+      <option value="writing">写作中</option>
+      <option value="completed">已完成</option>
+      <option value="synced">已同步</option>
+    </select>
   );
 }

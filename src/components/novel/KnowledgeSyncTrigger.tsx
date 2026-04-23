@@ -1,37 +1,23 @@
 import { useState } from 'react';
-import { useNovelStore } from '@/stores/novelStore';
+import { useProjectStore } from '@/stores/projectStore';
 
 export function KnowledgeSyncTrigger() {
-  const {
-    getCurrentChapter,
-    triggerSync,
-    markChapterSynced,
-    lastSyncResult,
-  } = useNovelStore();
-
-  const chapter = getCurrentChapter();
+  const { projects, currentProjectId, currentNovelId, currentChapterId } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId) || null;
+  const currentNovel = project?.novels.find((n) => n.id === currentNovelId) || null;
+  const chapter = currentNovel?.chapters.find((c) => c.id === currentChapterId) || null;
   const [isSyncing, setIsSyncing] = useState(false);
-  const [showResult, setShowResult] = useState(false);
 
+  // TODO: 同步功能需要迁移到 projectStore
+  // 目前显示占位符
   const handleSync = async () => {
-    if (!chapter || isSyncing) return;
-
-    setIsSyncing(true);
-    try {
-      await triggerSync(chapter.id);
-      markChapterSynced(chapter.id);
-      setShowResult(true);
-      setTimeout(() => setShowResult(false), 5000);
-    } catch (error) {
-      console.error('Sync failed:', error);
-    } finally {
-      setIsSyncing(false);
-    }
+    if (!chapter) return;
+    // 功能开发中 - 暂时不做任何事
+    console.log('Knowledge sync placeholder - to be implemented');
   };
 
   if (!chapter) return null;
 
-  // 始终允许同步，只要内容不为空
   const canSync = chapter.content.trim().length > 0;
 
   return (
@@ -59,26 +45,9 @@ export function KnowledgeSyncTrigger() {
         {isSyncing ? '同步中...' : '触发同步'}
       </button>
 
-      {showResult && lastSyncResult && (
-        <div className="mt-3 p-3 bg-neutral-800 rounded text-xs">
-          <p className="text-green-400 mb-1">✓ 同步完成</p>
-          {(lastSyncResult.newCharacters?.length ?? 0) > 0 && (
-            <p className="text-neutral-400">新增角色: {lastSyncResult.newCharacters.length}</p>
-          )}
-          {(lastSyncResult.newItems?.length ?? 0) > 0 && (
-            <p className="text-neutral-400">新增物品: {lastSyncResult.newItems.length}</p>
-          )}
-          {(lastSyncResult.scenesExtracted?.length ?? 0) > 0 && (
-            <p className="text-neutral-400">提取场景: {lastSyncResult.scenesExtracted.length}</p>
-          )}
-        </div>
-      )}
-
-      {!canSync && !isSyncing && (
-        <p className="mt-2 text-xs text-neutral-600">
-          请先编写内容
-        </p>
-      )}
+      <p className="mt-2 text-xs text-neutral-600">
+        知识库同步功能开发中
+      </p>
     </div>
   );
 }

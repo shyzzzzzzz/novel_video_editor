@@ -11,9 +11,11 @@ import { useAudioStore } from './stores/audioStore';
 import { useTimelineStore } from './stores/timelineStore';
 import { useReviewStore } from './stores/reviewStore';
 import { useSettingsStore } from './stores/settingsStore';
+import { useProjectStore } from './stores/projectStore';
 
 async function loadPersistedStores() {
   await Promise.all([
+    useProjectStore.getState().load(), // 先加载 projectStore（会检查迁移旧数据）
     useWorkspaceStore.getState().load(),
     useNovelStore.getState().load(),
     useKnowledgeStore.getState().load(),

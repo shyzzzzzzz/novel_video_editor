@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { useKnowledgeStore } from '@/stores/knowledgeStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { Character, getCharacterDefaultImage } from '@/types';
 import { generateText } from '@/lib/api-client';
 import { getSkillSysprompt } from '@/stores/settingsStore';
 
 export function RoleLibrary() {
-  const { characters, addCharacter, deleteCharacter } = useKnowledgeStore();
+  const { projects, currentProjectId, addCharacter, deleteCharacter } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId);
+  const characters = project?.characters || [];
   const [showAddForm, setShowAddForm] = useState(false);
 
   return (
@@ -36,7 +38,7 @@ export function RoleLibrary() {
           <p className="text-xs mt-1">从小说同步或手动添加开始</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {characters.map((character) => (
             <CharacterCard
               key={character.id}
@@ -120,9 +122,31 @@ function CharacterCard({
   const [localDescription, setLocalDescription] = useState(character.card?.description || '');
   const [generatingText, setGeneratingText] = useState(false);
   const [userInstruction, setUserInstruction] = useState('');
-  const { updateCharacter } = useKnowledgeStore();
+  const { updateCharacter } = useProjectStore();
 
-  // 处理图片上传
+  // 处理三视图上传
+  const handleUploadThreeView = (view: 'frontView' | 'sideView' | 'backView') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      if (!dataUrl) return;
+
+      const currentCard = character.card!;
+      updateCharacter(character.id, {
+        card: {
+          ...currentCard,
+          [view]: dataUrl,
+        },
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // 处理多图上传（向后兼容）
   const handleUploadImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -157,6 +181,9 @@ function CharacterCard({
         defaultImageIndex: currentCard.defaultImageIndex ?? 0,
         description: localDescription,
         keyExpressions: currentCard.keyExpressions || [],
+        frontView: currentCard.frontView,
+        sideView: currentCard.sideView,
+        backView: currentCard.backView,
       },
     });
   };
@@ -224,7 +251,7 @@ function CharacterCard({
 
   return (
     <div
-      className="bg-neutral-900 rounded-lg overflow-hidden"
+      className={`bg-neutral-900 rounded-lg overflow-hidden ${expanded ? 'col-span-2' : ''}`}
       draggable={!!getCharacterDefaultImage(character.card)}
       onDragStart={handleCardDragStart}
     >
@@ -294,10 +321,64 @@ function CharacterCard({
             />
           </div>
 
-          {/* 多图展示 */}
+          {/* 三视图上传 */}
+          <div>
+            <p className="text-xs text-neutral-500 mb-2">角色三视图</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(['frontView', 'sideView', 'backView'] as const).map((view) => {
+                const labels = { frontView: '正面', sideView: '侧面', backView: '背面' };
+                const viewImage = character.card[view];
+                return (
+                  <div key={view} className="relative">
+                    <div className="text-[10px] text-neutral-500 text-center mb-1">{labels[view]}</div>
+                    <label
+                      className={`block w-full aspect-square rounded cursor-pointer overflow-hidden bg-neutral-800 border-2 transition-colors ${
+                        viewImage ? 'border-neutral-700 hover:border-neutral-500' : 'border-dashed border-neutral-600 hover:border-neutral-500'
+                      }`}
+                    >
+                      {viewImage ? (
+                        <img
+                          src={viewImage}
+                          alt={labels[view]}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-neutral-600">
+                          <span className="text-lg">+</span>
+                          <span className="text-[10px]">上传</span>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleUploadThreeView(view)}
+                        className="hidden"
+                      />
+                    </label>
+                    {viewImage && (
+                      <button
+                        onClick={() => {
+                          const currentCard = character.card!;
+                          updateCharacter(character.id, {
+                            card: { ...currentCard, [view]: undefined },
+                          });
+                        }}
+                        className="absolute top-4 right-1 w-4 h-4 bg-red-600 text-white text-[10px] rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100"
+                        title="删除"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 多图展示（向后兼容） */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <p className="text-xs text-neutral-500">角色图（{character.card.images?.length || 0}张）</p>
+              <p className="text-xs text-neutral-500">更多图片（{character.card.images?.length || 0}张）</p>
               <label className="px-2 py-0.5 text-xs bg-green-700 text-white rounded hover:bg-green-600 cursor-pointer">
                 + 上传
                 <input
@@ -358,7 +439,7 @@ function CharacterCard({
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-neutral-600 text-center py-4">暂无图片，点击上传</p>
+              <p className="text-xs text-neutral-600 text-center py-2">暂无额外图片</p>
             )}
           </div>
 

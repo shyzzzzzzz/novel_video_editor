@@ -1,11 +1,11 @@
 {
   "env": {
-    "ANTHROPIC_BASE_URL": "https://api.minimaxi.com/anthropic",
-    "ANTHROPIC_AUTH_TOKEN": "sk-cp-8RKK1NTVSpjTYMWfzsF2JzJ1dkjPVoJCpeJI_h-ME8OW5pC-CnpFuxawSAgrEWiNRShOCWf-vhlvAzPQLif0tm_q4o-ZfMJ6txp1I97atCqaGGwYpESCpd4",
+    "ANTHROPIC_BASE_URL": "http://i-nhi.zhejianglab.org/nanhuinfer/glm5.1-code-02912",
+    "ANTHROPIC_AUTH_TOKEN": "sk-1242561226989514752",
     "API_TIMEOUT_MS": "3000000",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "ANTHROPIC_MODEL": "MiniMax-M2.7-highspeed",
-    "ANTHROPIC_SMALL_FAST_MODEL": "MiniMax-M2.7-highspeed",
+    "ANTHROPIC_MODEL": "glm5",
+    "ANTHROPIC_SMALL_FAST_MODEL": "glm5",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "MiniMax-M2.7-highspeed",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "MiniMax-M2.7-highspeed",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "MiniMax-M2.7-highspeed"
@@ -28,9 +28,7 @@
       "Bash(npm run:*)",
       "mcp__plugin_playwright_playwright__browser_navigate",
       "mcp__plugin_playwright_playwright__browser_snapshot",
-      "mcp__plugin_playwright_playwright__browser_console_messages",
-      "Bash(node -e ' *)",
-      "Bash(node test_recover.js)"
+      "mcp__plugin_playwright_playwright__browser_console_messages"
     ]
   }
 }

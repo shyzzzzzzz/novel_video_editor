@@ -53,6 +53,24 @@ export const DEFAULT_SKILLS: Skill[] = [
 只返回 JSON 数组，不要包含其他文字。`,
   },
   {
+    id: 'proofread',
+    name: '基础校对',
+    description: '检查小说中的基础错误，如的地得、标点符号、错别字',
+    sysprompt: `你是一位专业的中文校对员，专门检查小说中的基础错误。
+请仔细检查以下文本中的以下问题：
+1. 的/地/得 混用错误（的用于名词前，地用于动词前，得用于动词后）
+2. 标点符号错误（错用、漏用、多用）
+3. 常见错别字（如：再/在、和/合、那/哪、得/的 等）
+4. 其他明显的基础语法错误
+
+请以JSON数组格式返回发现的问题：
+[
+  {"error": "错误内容", "correct": "正确内容", "reason": "错误原因", "line": 相关行号}
+]
+
+如果发现多个错误，请全部列出。只返回JSON数组，不要有其他内容。`,
+  },
+  {
     id: 'outline',
     name: '大纲生成',
     description: '从小说章节提取故事大纲',
@@ -83,38 +101,44 @@ export const DEFAULT_SKILLS: Skill[] = [
     sysprompt: `你是一位专业分镜师。请将以下剧本拆解为详细的分镜描述。
 
 【分镜格式要求】
-请为每个镜头输出以下信息：
-- shot_no: 镜头编号（格式：场景序号-镜号，如 1-1, 1-2, 2-1）
-- scene_name: 场景名称
-- scene_time: 场景时间（白天/夜晚/黄昏/清晨）
-- framing: 景别（大特写/特写/中近景/中景/中远景/远景/大远景）
-- composition: 画面构图（三分法/对称/框架/对角线）
-- character_action: 角色动作、表情、站位描述
-- movement: 运镜方式（固定/推/拉/摇/倾/移/跟/升降）
-- lighting: 光影设计（顺光/侧光/逆光/顶光/伦勃朗光）
-- atmosphere: 情绪氛围关键词
-- color_tone: 色调倾向（暖色调/冷色调/低饱和/高饱和）
-- transition: 转场方式（切/淡入淡出/叠化）
-- duration: 建议时长（秒）
-- description: 画面描述
+请为每个镜头输出以下信息（JSON 格式）：
+- shot_no: 镜头编号（字符串，格式如 "1-1"、"2-3"）
+- scene_name: 场景名称（字符串）
+- scene_time: 场景时间（字符串，只能是：白天 / 夜晚 / 黄昏 / 清晨）
+- framing: 景别（字符串，只能是：大特写 / 特写 / 中近景 / 中景 / 中远景 / 远景 / 大远景）
+- composition: 画面构图（字符串）
+- character_action: 角色动作和表情描述（字符串）
+- movement: 运镜方式（字符串，只能是：固定 / 推 / 拉 / 摇 / 倾 / 移 / 跟 / 升降）
+- lighting: 光影设计（字符串，只能是：顺光 / 侧光 / 逆光 / 顶光 / 伦勃朗光）
+- atmosphere: 情绪氛围（字符串）
+- color_tone: 色调（字符串，只能是：暖色调 / 冷色调 / 低饱和 / 高饱和）
+- transition: 转场方式（字符串，只能是：切 / 淡入淡出 / 叠化）
+- duration: 时长（数字，单位为秒，如 5）
+- description: 画面描述（字符串）
 
-【输出格式】
-只返回JSON数组，不要其他文字。
+【重要约束】
+1. 严格只输出一个 JSON 数组，不要输出任何其他内容
+2. 不要用 markdown 代码块包裹，不要加解释文字
+3. duration 必须是数字类型，不能是带引号的字符串
+4. 数组内每个对象的字段完整，不要省略任何字段
+5. 最后一个元素后面不要加逗号
+
+【示例输出】
 [
   {
     "shot_no": "1-1",
-    "scene_name": "场景名称",
+    "scene_name": "客厅",
     "scene_time": "白天",
     "framing": "中景",
     "composition": "三分法",
-    "character_action": "角色动作描述",
+    "character_action": "主角坐在沙发上，低头沉思",
     "movement": "固定",
     "lighting": "侧光",
-    "atmosphere": "紧张",
+    "atmosphere": "沉静",
     "color_tone": "冷色调",
     "transition": "切",
     "duration": 5,
-    "description": "详细画面描述"
+    "description": "阳光从窗户斜射进来，主角独自坐在客厅，表情凝重"
   }
 ]`,
   },

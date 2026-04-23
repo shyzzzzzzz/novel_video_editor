@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { useKnowledgeStore } from '@/stores/knowledgeStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { Location } from '@/types';
 
 export function LocationLibrary() {
-  const { locations, addLocation, deleteLocation } = useKnowledgeStore();
+  const { projects, currentProjectId, addLocation, deleteLocation } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId);
+  const locations = project?.locations || [];
   const [showAddForm, setShowAddForm] = useState(false);
 
   return (

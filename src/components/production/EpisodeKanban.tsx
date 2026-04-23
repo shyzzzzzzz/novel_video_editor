@@ -1,5 +1,5 @@
-import { useProductionStore } from '@/stores/productionStore';
-import { ProductionEpisode, ProductionStatus } from '@/types';
+import { useProjectStore } from '@/stores/projectStore';
+import { Episode, ProductionStatus } from '@/types';
 
 const STAGES: { key: ProductionStatus; label: string }[] = [
   { key: 'outline', label: '大纲' },
@@ -10,9 +10,19 @@ const STAGES: { key: ProductionStatus; label: string }[] = [
   { key: 'final', label: '成片' },
 ];
 
-export function EpisodeKanban() {
-  const { episodes, setCurrentEpisode, getCurrentEpisode, deleteEpisode } = useProductionStore();
-  const currentEpisode = getCurrentEpisode();
+interface EpisodeKanbanProps {
+  episodes: Episode[];
+}
+
+export function EpisodeKanban({ episodes }: EpisodeKanbanProps) {
+  const { currentEpisodeId, setCurrentEpisode, updateEpisode } = useProjectStore();
+
+  const handleDelete = (episodeId: string, episodeName: string) => {
+    if (confirm(`确定删除剧集"${episodeName}"？`)) {
+      const { deleteEpisode } = useProjectStore.getState();
+      deleteEpisode(episodeId);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -38,17 +48,13 @@ export function EpisodeKanban() {
               <EpisodeRow
                 key={episode.id}
                 episode={episode}
-                isCurrentEpisode={currentEpisode?.id === episode.id}
+                isCurrentEpisode={currentEpisodeId === episode.id}
                 onClick={() => {
                   setCurrentEpisode(episode.id);
                   // 通过自定义事件通知 ProductionPanel 切换到详情
                   window.dispatchEvent(new CustomEvent('select-episode', { detail: episode.id }));
                 }}
-                onDelete={() => {
-                  if (confirm(`确定删除剧集"${episode.name}"？`)) {
-                    deleteEpisode(episode.id);
-                  }
-                }}
+                onDelete={() => handleDelete(episode.id, episode.name)}
               />
             ))}
           </div>
@@ -64,12 +70,12 @@ function EpisodeRow({
   onClick,
   onDelete,
 }: {
-  episode: ProductionEpisode;
+  episode: Episode;
   isCurrentEpisode: boolean;
   onClick: () => void;
   onDelete: () => void;
 }) {
-  const stageIndex = STAGES.findIndex((s) => s.key === episode.status);
+  const stageIndex = STAGES.findIndex((s) => s.key === episode.productionStatus);
 
   return (
     <div className={`grid grid-cols-8 gap-2 mb-2 p-2 rounded ${isCurrentEpisode ? 'bg-neutral-800' : 'hover:bg-neutral-800/50'}`}>

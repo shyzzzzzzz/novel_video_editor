@@ -11,7 +11,7 @@ interface ProductionState {
 
   episodes: ProductionEpisode[];
   currentEpisodeId: string | null;
-  addEpisode: (name: string, novelChapterIds?: string[]) => ProductionEpisode;
+  addEpisode: (name: string, projectId: string, novelChapterIds?: string[]) => ProductionEpisode;
   updateEpisode: (id: string, updates: Partial<ProductionEpisode>) => void;
   deleteEpisode: (id: string) => void;
   setCurrentEpisode: (id: string | null) => void;
@@ -38,9 +38,10 @@ export const useProductionStore = create<ProductionState>((set, get) => ({
   episodes: [],
   currentEpisodeId: null,
 
-  addEpisode: (name, novelChapterIds = []) => {
+  addEpisode: (name, projectId, novelChapterIds = []) => {
     const episode: ProductionEpisode = {
       id: uuid(),
+      projectId,
       name,
       novelChapterIds,
       status: 'outline',

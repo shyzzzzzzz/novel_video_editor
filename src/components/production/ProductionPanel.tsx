@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
-import { useProductionStore } from '@/stores/productionStore';
-import { useNovelStore } from '@/stores/novelStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { useSettingsStore, getSkillSysprompt } from '@/stores/settingsStore';
 import { generateText } from '@/lib/api-client';
+import { Episode } from '@/types';
 import { EpisodeKanban } from './EpisodeKanban';
 import { EpisodeDetail } from './EpisodeDetail';
 
 type ProductionTab = 'kanban' | 'detail';
 
 export function ProductionPanel() {
-  const { currentEpisodeId, episodes, setCurrentEpisode, addEpisode, updateEpisode } = useProductionStore();
-  const { getCurrentChapter } = useNovelStore();
-  const chapter = getCurrentChapter();
+  const { currentProjectId, projects, currentEpisodeId, addEpisode, updateEpisode, setCurrentEpisode } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId);
+  const projectEpisodes = project?.episodes || [];
+  const currentEpisode = projectEpisodes.find((e) => e.id === currentEpisodeId) || null;
+  const chapter = useProjectStore.getState().getCurrentChapter();
   const [activeTab, setActiveTab] = useState<ProductionTab>(currentEpisodeId ? 'detail' : 'kanban');
   const [isGenerating, setIsGenerating] = useState(false);
   const [currentOperation, setCurrentOperation] = useState('');
@@ -38,11 +40,9 @@ export function ProductionPanel() {
     return () => window.removeEventListener('select-episode', handler);
   }, []);
 
-  const currentEpisode = episodes.find((e) => e.id === currentEpisodeId);
-
   // 从当前章节新建并生成大纲
   const handleAutoCreate = async () => {
-    if (!chapter || isGenerating) return;
+    if (!chapter || isGenerating || !currentProjectId) return;
 
     const config = useSettingsStore.getState().apis.text;
     if (config.provider === 'mock') {
@@ -52,12 +52,25 @@ export function ProductionPanel() {
 
     setIsGenerating(true);
     try {
-      const ep = addEpisode(chapter.title || `第${episodes.length + 1}集`, [chapter.id]);
-      setCurrentEpisode(ep.id);
+      const ep = addEpisode({
+        name: chapter.title || `第${projectEpisodes.length + 1}集`,
+        status: 'draft',
+        productionStatus: 'outline',
+        novelChapterIds: [chapter.id],
+        scenes: [],
+        outline: '',
+        script: '',
+        generatedStoryboard: '',
+        scripts: [],
+        storyboards: [],
+        audioTracks: [],
+      });
+      if (ep) {
+        setCurrentEpisode(ep.id);
 
-      setCurrentOperation('生成大纲...');
-      const skillSysprompt = getSkillSysprompt('text', 'outline');
-      const prompt = `请根据以下小说内容，生成简洁的大纲，包括：
+        setCurrentOperation('生成大纲...');
+        const skillSysprompt = getSkillSysprompt('text', 'outline');
+        const prompt = `请根据以下小说内容，生成简洁的大纲，包括：
 1. 本章核心情节（2-3句话）
 2. 主要场景清单
 3. 关键人物
@@ -67,11 +80,12 @@ ${chapter.content.slice(0, 8000)}
 
 请以清晰的格式返回，作为剧本改编的参考。`;
 
-      const outline = await generateText(prompt, {
-        system: skillSysprompt || '你是一位专业的小说改编助理，擅长提取故事大纲。',
-        model: config.model,
-      });
-      updateEpisode(ep.id, { outline, status: 'outline' });
+        const outline = await generateText(prompt, {
+          system: skillSysprompt || '你是一位专业的小说改编助理，擅长提取故事大纲。',
+          model: config.model,
+        });
+        updateEpisode(ep.id, { outline, productionStatus: 'outline' });
+      }
     } catch (err) {
       alert(`创建失败: ${err instanceof Error ? err.message : '未知错误'}`);
     } finally {
@@ -135,7 +149,7 @@ ${chapter.content.slice(0, 8000)}
       {/* Content */}
       <div className="flex-1 overflow-auto">
         {activeTab === 'kanban' ? (
-          <EpisodeKanban />
+          <EpisodeKanban episodes={projectEpisodes} />
         ) : (
           currentEpisode && <EpisodeDetail episode={currentEpisode} />
         )}

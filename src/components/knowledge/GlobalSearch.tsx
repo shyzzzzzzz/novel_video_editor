@@ -1,29 +1,66 @@
 import { useEffect, useState } from 'react';
-import { useKnowledgeStore } from '@/stores/knowledgeStore';
-import { useNovelStore } from '@/stores/novelStore';
+import { useProjectStore } from '@/stores/projectStore';
+import { SearchResult } from '@/types';
 
 export function GlobalSearch() {
-  const { searchQuery, searchResults, performSearch, clearSearch } = useKnowledgeStore();
-  const { currentNovel } = useNovelStore();
-  const [query, setQuery] = useState(searchQuery);
+  const { projects, currentProjectId, currentNovelId } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId);
+  const currentNovel = project?.novels.find((n) => n.id === currentNovelId);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchResult[]>([]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (query.trim()) {
-        const chapters = currentNovel?.chapters.map((ch) => ({
-          id: ch.id,
-          title: ch.title,
-          content: ch.content,
-        }));
-        performSearch(query, chapters);
-      } else {
-        clearSearch();
+      if (!query.trim()) {
+        setResults([]);
+        return;
       }
+
+      const q = query.toLowerCase();
+      const newResults: SearchResult[] = [];
+
+      // 搜索角色
+      project?.characters.forEach((c) => {
+        if (c.name.toLowerCase().includes(q) || c.personality?.toLowerCase().includes(q)) {
+          newResults.push({ type: 'character', id: c.id, title: c.name, score: 1 });
+        }
+      });
+
+      // 搜索物品
+      project?.items.forEach((i) => {
+        if (i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q)) {
+          newResults.push({ type: 'item', id: i.id, title: i.name, score: 1 });
+        }
+      });
+
+      // 搜索地点
+      project?.locations.forEach((l) => {
+        if (l.name.toLowerCase().includes(q) || l.description.toLowerCase().includes(q)) {
+          newResults.push({ type: 'location', id: l.id, title: l.name, score: 1 });
+        }
+      });
+
+      // 搜索剧情线
+      project?.plotLines.forEach((pl) => {
+        if (pl.title.toLowerCase().includes(q) || pl.description?.toLowerCase().includes(q)) {
+          newResults.push({ type: 'plotline', id: pl.id, title: pl.title, score: 1 });
+        }
+      });
+
+      // 搜索章节
+      currentNovel?.chapters.forEach((ch) => {
+        if (ch.title.toLowerCase().includes(q) || ch.content.toLowerCase().includes(q)) {
+          const excerpt = ch.content.slice(ch.content.toLowerCase().indexOf(q) - 20, ch.content.toLowerCase().indexOf(q) + 50);
+          newResults.push({ type: 'chapter', id: ch.id, title: ch.title, excerpt, chapterId: ch.id, score: 1 });
+        }
+      });
+
+      setResults(newResults);
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, currentNovel]);
+  }, [query, project, currentNovel]);
 
-  const typeIcons = {
+  const typeIcons: Record<string, string> = {
     character: '👤',
     item: '📦',
     location: '📍',
@@ -43,10 +80,7 @@ export function GlobalSearch() {
         />
         {query && (
           <button
-            onClick={() => {
-              setQuery('');
-              clearSearch();
-            }}
+            onClick={() => setQuery('')}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"
           >
             ×
@@ -54,14 +88,14 @@ export function GlobalSearch() {
         )}
       </div>
 
-      {searchResults.length === 0 && query.trim() ? (
+      {results.length === 0 && query.trim() ? (
         <div className="text-center text-neutral-500 py-12">
           <p>未找到匹配结果</p>
         </div>
-      ) : searchResults.length > 0 ? (
+      ) : results.length > 0 ? (
         <div className="space-y-2">
-          <p className="text-xs text-neutral-500 mb-2">找到 {searchResults.length} 个结果</p>
-          {searchResults.map((result) => (
+          <p className="text-xs text-neutral-500 mb-2">找到 {results.length} 个结果</p>
+          {results.map((result) => (
             <div
               key={`${result.type}-${result.id}`}
               className="p-3 bg-neutral-900 rounded hover:bg-neutral-800 cursor-pointer transition-colors"

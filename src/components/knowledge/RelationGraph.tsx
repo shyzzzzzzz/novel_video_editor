@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { useKnowledgeStore } from '@/stores/knowledgeStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { Character, getCharacterDefaultImage } from '@/types';
 
 const RELATION_COLORS: Record<string, string> = {
@@ -36,7 +36,9 @@ interface GraphEdge {
 }
 
 export function RelationGraph() {
-  const { characters } = useKnowledgeStore();
+  const { projects, currentProjectId } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId);
+  const characters = project?.characters || [];
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<GraphEdge | null>(null);
   const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: 800, h: 600 });

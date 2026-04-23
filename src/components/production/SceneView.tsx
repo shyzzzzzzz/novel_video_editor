@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { useProductionStore } from '@/stores/productionStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { ProductionScene, SceneStatus } from '@/types';
 
 export function SceneView() {
-  const { episodes, setCurrentEpisode, getScenesForEpisode } = useProductionStore();
+  const { projects, currentProjectId, setCurrentEpisode } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId);
+  const episodes = project?.episodes || [];
   const [filterEpisodeId, setFilterEpisodeId] = useState<string>('all');
 
   const filteredEpisodes =
@@ -12,7 +14,7 @@ export function SceneView() {
       : episodes.filter((e) => e.id === filterEpisodeId);
 
   const allScenes = filteredEpisodes.flatMap((e) =>
-    getScenesForEpisode(e.id).map((s) => ({ ...s, episodeName: e.name }))
+    (e.scenes || []).map((s) => ({ ...s, episodeName: e.name }))
   );
 
   return (

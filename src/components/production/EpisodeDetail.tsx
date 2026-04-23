@@ -1,20 +1,18 @@
 import { useState } from 'react';
-import { useProductionStore } from '@/stores/productionStore';
-import { useNovelStore } from '@/stores/novelStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { useSettingsStore, getSkillSysprompt } from '@/stores/settingsStore';
 import { useStoryboardStore } from '@/stores/storyboardStore';
 import { generateText } from '@/lib/api-client';
-import { ProductionEpisode, ProductionStatus, CameraAngle } from '@/types';
+import { Episode, ProductionStatus, CameraAngle } from '@/types';
 import { StoryboardView } from './StoryboardView';
 import { TimelineEditor } from './TimelineEditor';
 import { AudioPipeline } from './AudioPipeline';
 
 type DetailTab = 'outline' | 'script' | 'storyboard' | 'timeline' | 'audio';
 
-export function EpisodeDetail({ episode }: { episode: ProductionEpisode }) {
-  const { updateEpisode, advanceEpisodeStatus, revertEpisodeStatus } = useProductionStore();
-  const { getCurrentChapter } = useNovelStore();
-  const chapter = getCurrentChapter();
+export function EpisodeDetail({ episode }: { episode: Episode }) {
+  const { updateEpisode, advanceEpisodeStatus, revertEpisodeStatus } = useProjectStore();
+  const chapter = useProjectStore.getState().getCurrentChapter();
   const [activeTab, setActiveTab] = useState<DetailTab>('outline');
   const [isGenerating, setIsGenerating] = useState(false);
   const [currentOperation, setCurrentOperation] = useState('');
@@ -36,7 +34,8 @@ export function EpisodeDetail({ episode }: { episode: ProductionEpisode }) {
     'rough_cut',
     'final',
   ];
-  const currentIndex = statusOrder.indexOf(episode.status);
+  const currentStatus = episode.productionStatus || 'outline';
+  const currentIndex = statusOrder.indexOf(currentStatus);
   const canGoBack = currentIndex > 0;
   const canGoForward = currentIndex < statusOrder.length - 1;
 
@@ -124,14 +123,14 @@ ${chapter.content.slice(0, 10000)}
     }
     const skillSysprompt = getSkillSysprompt('text', 'storyboard');
     if (!skillSysprompt) {
-      alert('请先在设置中配置"分镜生成"技能的 Sysprompt');
+      alert('请先在设置里配置"分镜生成"技能的 Sysprompt');
       return;
     }
     setIsGenerating(true);
     setCurrentOperation('生成分镜...');
     try {
       const prompt = `【剧本内容】
-${episode.script.slice(0, 8000)}
+${episode.script.slice(0, 12000)}
 
 【重要】只返回 JSON 数组，不要任何 markdown 包装、不要代码块、不要其他文字。`;
 
@@ -140,7 +139,7 @@ ${episode.script.slice(0, 8000)}
         model: config.model,
       });
 
-      console.log('[分镜生成] LLM 返回:', response.slice(0, 200));
+      console.log('[分镜生成] LLM 返回 (完整):', response);
 
       // 解析JSON —— 多层容错
       let storyboardJson = response;
@@ -151,11 +150,11 @@ ${episode.script.slice(0, 8000)}
         storyboardJson = JSON.stringify(parsedShots);
         console.log('[分镜生成] 解析成功，镜头数:', parsedShots.length);
       } catch (e) {
-        console.error('[分镜生成] 解析失败，原始返回:', response.slice(0, 500));
+        console.error('[分镜生成] 解析失败:', e instanceof Error ? e.message : String(e));
         throw new Error(`分镜解析失败: ${e instanceof Error ? e.message : '未知错误'}。请检查设置里的 Sysprompt 是否正确。`);
       }
 
-      updateEpisode(episode.id, { storyboard: storyboardJson });
+      updateEpisode(episode.id, { generatedStoryboard: storyboardJson });
       syncStoryboardToStore(episode.id, storyboardJson);
     } catch (err) {
       console.error('[分镜生成] 失败:', err);
@@ -182,9 +181,10 @@ ${episode.script.slice(0, 8000)}
         '低角': 'low_angle', 'low_angle': 'low_angle',
       };
       for (const item of data) {
-        const cameraAngle: CameraAngle = framingMap[item.framing] || 'medium';
+        const cameraAngle: CameraAngle = framingMap[String(item.framing)] || 'medium';
         const description = buildShotDescription(item);
-        useStoryboardStore.getState().addShot(storyboard.id, description, cameraAngle);
+        const duration = typeof item.duration === 'number' ? item.duration : 5;
+        useStoryboardStore.getState().addShot(storyboard.id, description, cameraAngle, duration);
       }
     } catch (e) {
       console.error('Failed to sync storyboard:', e);
@@ -192,42 +192,103 @@ ${episode.script.slice(0, 8000)}
   }
 
   /**
+   * 从被截断的 JSON 文本中恢复数据
+   * 策略：先关闭末尾未闭合的字符串，再从后往前找最后一个完整对象
+   */
+  function recoverTruncatedJson(truncated: string): unknown[] {
+    const candidates: string[] = [];
+    let depth = 0;
+    let start = -1;
+    let inStr = false;
+    let esc = false;
+
+    for (let i = 0; i < truncated.length; i++) {
+      const ch = truncated[i];
+      if (esc) { esc = false; continue; }
+      if (ch === '\\' && inStr) { esc = true; continue; }
+      if (ch === '"' && !esc) { inStr = !inStr; continue; }
+      if (inStr) continue;
+
+      if (ch === '{') {
+        if (depth === 0) start = i;
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          const objStr = truncated.slice(start, i + 1);
+          try {
+            JSON.parse(objStr);
+            candidates.push(objStr);
+          } catch { /* 被截断的对象，跳过 */ }
+          start = -1;
+        }
+      }
+    }
+
+    console.log('[恢复] 全量扫描找到', candidates.length, '个候选对象');
+    if (candidates.length === 0) throw new Error('无法从截断文本中恢复');
+
+    for (let n = candidates.length; n > 0; n--) {
+      try {
+        const parsed = JSON.parse('[' + candidates.slice(0, n).join(',') + ']');
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          console.log('[恢复] 成功，前', n, '个对象，共', parsed.length, '个镜头');
+          return parsed;
+        }
+      } catch { /* 继续 */ }
+    }
+
+    try {
+      const last = JSON.parse(candidates[candidates.length - 1]);
+      console.log('[恢复] 兜底返回最后一个对象');
+      return [last];
+    } catch {
+      throw new Error('无法从截断文本中恢复');
+    }
+  }
+
+  /**
    * 从 LLM 返回的文本中鲁棒地解析 JSON 数组
-   * 处理：markdown 代码块包裹、前后多余文字、BOM、尾逗号等
    */
   function parseJsonArray(text: string): unknown[] {
     let cleaned = text.trim();
+    console.log('[解析] 原始长度:', cleaned.length, '前50字符:', cleaned.slice(0, 50));
 
-    // 1. 去 BOM
     if (cleaned.charCodeAt(0) === 0xfeff) {
       cleaned = cleaned.slice(1);
     }
 
-    // 2. 尝试剥离 markdown 代码块（```json ... ``` 或 ``` ... ```）
     const codeBlockMatch = cleaned.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
     if (codeBlockMatch) {
+      console.log('[解析] 检测到 markdown 代码块，已剥离');
       cleaned = codeBlockMatch[1].trim();
+    } else {
+      console.log('[解析] 无 markdown 代码块');
     }
+    console.log('[解析] 剥离后前100字符:', cleaned.slice(0, 100));
 
-    // 3. 直接尝试解析
     try {
       const parsed = JSON.parse(cleaned);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    } catch {
-      // 继续尝试下面的方法
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log('[解析] 直接 JSON.parse 成功，', parsed.length, '个元素');
+        return parsed;
+      }
+    } catch (e) {
+      console.log('[解析] 直接 parse 失败:', e instanceof Error ? e.message : String(e));
     }
 
-    // 4. 找到第一个 [ 和匹配的 ] —— 用括号计数器而非 lastIndexOf
     const firstBracket = cleaned.indexOf('[');
+    console.log('[解析] firstBracket 位置:', firstBracket);
     if (firstBracket === -1) throw new Error('未找到 JSON 数组的起始 [');
 
     let depth = 0;
+    let lastBracket = -1;
     let inString = false;
     let escape = false;
-    let lastBracket = -1;
 
     for (let i = firstBracket; i < cleaned.length; i++) {
       const ch = cleaned[i];
+
       if (escape) {
         escape = false;
         continue;
@@ -236,14 +297,14 @@ ${episode.script.slice(0, 8000)}
         escape = true;
         continue;
       }
-      if (ch === '"') {
+      if (ch === '"' && !escape) {
         inString = !inString;
         continue;
       }
       if (inString) continue;
 
       if (ch === '[') depth++;
-      if (ch === ']') {
+      else if (ch === ']') {
         depth--;
         if (depth === 0) {
           lastBracket = i;
@@ -252,51 +313,95 @@ ${episode.script.slice(0, 8000)}
       }
     }
 
-    if (lastBracket === -1) throw new Error('未找到 JSON 数组的匹配结束 ]');
+    console.log('[解析] lastBracket 位置:', lastBracket);
+
+    if (lastBracket === -1) {
+      console.log('[解析] 未找到闭合 ]，尝试恢复...');
+      try {
+        const recovered = recoverTruncatedJson(cleaned);
+        if (recovered.length > 0) {
+          console.log('[解析] 恢复成功，共', recovered.length, '个镜头');
+          return recovered;
+        }
+      } catch (e2) {
+        console.log('[解析] 恢复失败:', e2 instanceof Error ? e2.message : String(e2));
+      }
+      throw new Error('未找到 JSON 数组的匹配结束 ]');
+    }
+
+    console.log('[解析] 截取范围: [', firstBracket, ',', lastBracket, ']');
 
     let jsonArrayStr = cleaned.slice(firstBracket, lastBracket + 1);
+    console.log('[解析] 截取后长度:', jsonArrayStr.length);
 
-    // 5. 修复常见的尾逗号问题（数组最后一项或对象最后一项后的逗号）
-    jsonArrayStr = jsonArrayStr.replace(/,\s*([}\]])/g, '$1');
+    const beforeFix = jsonArrayStr;
+    jsonArrayStr = jsonArrayStr.replace(/,(\s*[}\]])/g, '$1');
+    if (beforeFix !== jsonArrayStr) console.log('[解析] 修复了尾逗号');
 
     try {
       const parsed = JSON.parse(jsonArrayStr);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log('[解析] 成功，共', parsed.length, '个镜头');
+        return parsed;
+      }
       throw new Error('解析结果不是有效数组或为空');
     } catch (e) {
-      // 6. 最后手段：尝试提取所有 {...} 对象
+      console.log('[解析] parse 仍然失败，尝试逐对象提取...');
+
       const objects: unknown[] = [];
       let objDepth = 0;
       let objStart = -1;
-      let objInStr = false;
-      let objEscape = false;
+      let objInString = false;
+      let objEsc = false;
 
       for (let i = 0; i < jsonArrayStr.length; i++) {
         const ch = jsonArrayStr[i];
-        if (objEscape) { objEscape = false; continue; }
-        if (ch === '\\' && objInStr) { objEscape = true; continue; }
-        if (ch === '"') { objInStr = !objInStr; continue; }
-        if (objInStr) continue;
+
+        if (objEsc) {
+          objEsc = false;
+          continue;
+        }
+        if (ch === '\\' && objInString) {
+          objEsc = true;
+          continue;
+        }
+        if (ch === '"' && !objEsc) {
+          objInString = !objInString;
+          continue;
+        }
+        if (objInString) continue;
 
         if (ch === '{') {
           if (objDepth === 0) objStart = i;
           objDepth++;
-        }
-        if (ch === '}') {
+        } else if (ch === '}') {
           objDepth--;
           if (objDepth === 0 && objStart !== -1) {
             try {
-              const obj = JSON.parse(jsonArrayStr.slice(objStart, i + 1).replace(/,\s*([}\]])/g, '$1'));
-              objects.push(obj);
+              const objStr = jsonArrayStr.slice(objStart, i + 1).replace(/,(\s*[}\]])/g, '$1');
+              objects.push(JSON.parse(objStr));
             } catch {
-              // 跳过无法解析的单个对象
+              // 跳过
             }
             objStart = -1;
           }
         }
       }
 
+      console.log('[解析] 逐对象提取结果:', objects.length, '个对象');
       if (objects.length > 0) return objects;
+
+      console.log('[解析] 尝试从后往前恢复被截断的 JSON...');
+      try {
+        const recovered = recoverTruncatedJson(jsonArrayStr);
+        if (recovered.length > 0) {
+          console.log('[解析] 恢复成功，从末尾找回', recovered.length, '个对象');
+          return recovered;
+        }
+      } catch (e2) {
+        console.log('[解析] 恢复也失败:', e2 instanceof Error ? e2.message : String(e2));
+      }
+
       throw e;
     }
   }
@@ -306,13 +411,14 @@ ${episode.script.slice(0, 8000)}
     if (item.scene_name) parts.push(`【${item.scene_name}】`);
     if (item.scene_time) parts.push(`${item.scene_time} `);
     if (item.shot_no) parts.push(`镜头${item.shot_no} `);
-    if (item.character_action) parts.push(`角色:${item.character_action} `);
+    if (item.character_performance) parts.push(`角色:${item.character_performance} `);
     if (item.movement) parts.push(`运镜:${item.movement} `);
-    if (item.lighting) parts.push(`光影:${item.lighting} `);
+    if (item.lighting_design) parts.push(`光影:${item.lighting_design} `);
     if (item.atmosphere) parts.push(`氛围:${item.atmosphere} `);
-    if (item.color_tone) parts.push(`色调:${item.color_tone} `);
+    if (item.color_science) parts.push(`色调:${item.color_science} `);
     if (item.duration) parts.push(`时长:${item.duration}s `);
-    if (item.description) parts.push(`画面:${item.description}`);
+    if (item.visual_description) parts.push(`画面:${item.visual_description}`);
+    if (item.description && !item.visual_description) parts.push(`画面:${item.description}`);
     return parts.join('|');
   }
 
@@ -323,7 +429,7 @@ ${episode.script.slice(0, 8000)}
           <div>
             <h2 className="text-xl font-semibold text-white">{episode.name}</h2>
             <p className="text-sm text-neutral-500 mt-1">
-              <span className="text-blue-400">{statusLabels[episode.status]}</span>
+              <span className="text-blue-400">{statusLabels[currentStatus]}</span>
             </p>
           </div>
           <div className="flex gap-2">
@@ -361,7 +467,7 @@ ${episode.script.slice(0, 8000)}
             active={activeTab === 'storyboard'}
             onClick={() => setActiveTab('storyboard')}
             label="分镜"
-            hasContent={!!episode.storyboard}
+            hasContent={!!episode.generatedStoryboard}
           />
           <TabButton
             active={activeTab === 'timeline'}

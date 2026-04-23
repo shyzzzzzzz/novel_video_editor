@@ -78,7 +78,7 @@ export async function generateText(
     body: JSON.stringify({
       model,
       messages,
-      max_tokens: options?.maxTokens ?? 4096,
+      max_tokens: options?.maxTokens ?? 8192,
       temperature: options?.temperature ?? 0.7,
     }),
   });
@@ -154,7 +154,7 @@ export async function generateTextStream(
     body: JSON.stringify({
       model,
       messages,
-      max_tokens: options?.maxTokens ?? 4096,
+      max_tokens: options?.maxTokens ?? 8192,
       temperature: options?.temperature ?? 0.7,
       stream: true,
     }),

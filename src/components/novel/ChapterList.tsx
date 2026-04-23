@@ -1,29 +1,38 @@
 import { useState } from 'react';
-import { useNovelStore } from '@/stores/novelStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { Chapter } from '@/types';
 
 export function ChapterList() {
   const {
-    currentNovel,
+    projects,
+    currentProjectId,
+    currentNovelId,
     currentChapterId,
-    createChapter,
-    loadChapter,
+    addChapter,
+    setCurrentChapter,
     deleteChapter,
-    getChapterCount,
-    getCompletedChapterCount,
-  } = useNovelStore();
+    addNovel,
+  } = useProjectStore();
 
+  const project = projects.find((p) => p.id === currentProjectId) || null;
+  const currentNovel = project?.novels.find((n) => n.id === currentNovelId) || null;
   const [newChapterTitle, setNewChapterTitle] = useState('');
+
+  if (!project) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-4 text-neutral-500">
+        <p className="text-sm">请先选择一个项目</p>
+      </div>
+    );
+  }
 
   if (!currentNovel) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-4 text-neutral-500">
-        <p className="mb-4">暂无小说</p>
+        <p className="mb-4 text-sm">当前项目暂无小说</p>
         <button
-          onClick={() =>
-            useNovelStore.getState().createNovel('我的小说', '一部长篇作品')
-          }
-          className="px-4 py-2 bg-white text-black rounded hover:bg-neutral-200"
+          onClick={() => addNovel({ title: '我的小说', description: '一部长篇作品', chapters: [] })}
+          className="px-4 py-2 bg-white text-black rounded hover:bg-neutral-200 text-sm"
         >
           创建小说
         </button>
@@ -32,11 +41,30 @@ export function ChapterList() {
   }
 
   const handleCreateChapter = () => {
-    const title = newChapterTitle.trim() || `第${getChapterCount() + 1}章`;
-    createChapter(title);
+    const title = newChapterTitle.trim() || `第${currentNovel.chapters.length + 1}章`;
+    const newChapter = addChapter({
+      title,
+      content: '',
+      order: currentNovel.chapters.length,
+      status: 'draft',
+      metadata: {
+        wordCount: 0,
+        sceneCount: 0,
+        characters: [],
+        items: [],
+        locations: [],
+        plotPoints: [],
+        hooks: [],
+        tone: '',
+      },
+    });
+    if (newChapter) {
+      setCurrentChapter(newChapter.id);
+    }
     setNewChapterTitle('');
   };
 
+  const completedCount = currentNovel.chapters.filter((c) => c.status === 'completed' || c.status === 'synced').length;
   const sortedChapters = [...currentNovel.chapters].sort((a, b) => a.order - b.order);
 
   return (
@@ -44,7 +72,7 @@ export function ChapterList() {
       <div className="p-4 border-b border-neutral-800">
         <h2 className="text-lg font-semibold text-white mb-1">{currentNovel.title}</h2>
         <p className="text-xs text-neutral-500">
-          {getCompletedChapterCount()}/{getChapterCount()} 章已完成
+          {completedCount}/{currentNovel.chapters.length} 章已完成
         </p>
       </div>
 
@@ -78,7 +106,7 @@ export function ChapterList() {
               key={chapter.id}
               chapter={chapter}
               isActive={currentChapterId === chapter.id}
-              onClick={() => loadChapter(chapter.id)}
+              onClick={() => setCurrentChapter(chapter.id)}
               onDelete={() => deleteChapter(chapter.id)}
             />
           ))

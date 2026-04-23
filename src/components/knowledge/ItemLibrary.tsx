@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { useKnowledgeStore } from '@/stores/knowledgeStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { Item } from '@/types';
 
 export function ItemLibrary() {
-  const { items, addItem, deleteItem } = useKnowledgeStore();
+  const { projects, currentProjectId, addItem, deleteItem } = useProjectStore();
+  const project = projects.find((p) => p.id === currentProjectId);
+  const items = project?.items || [];
   const [showAddForm, setShowAddForm] = useState(false);
 
   return (
